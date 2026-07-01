@@ -1,0 +1,182 @@
+---
+title: "Model 3 — Neural Net"
+subtitle: "A small single-hidden-layer MLP via nnet"
+---
+
+> **Where we are:** Third of six model documents in the
+> [House Prices — Tidymodels Tour](../index.qmd). Same structure as the others;
+> we model `log(SalePrice)` and score on RMSE. The neural net is the model that
+> most needs the recipe's `step_normalize()` + `step_pca()` — MLPs are sensitive
+> to input scale in a way tree ensembles are not.
+
+## Why a neural net here?
+
+A single-hidden-layer MLP learns a smooth nonlinear function of the (normalized,
+decorrelated) principal components. On a well-featured tabular problem it rarely
+beats gradient boosting, but it makes *different* errors — which is exactly what
+makes it a valuable member of the [stacked ensemble](05-stack.qmd) later.
+
+## Setup
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+source(here::here("R", "00_setup.R"))
+source(here("R", "02_features.R"))
+
+library(tidyverse)
+library(tidymodels)
+library(here)
+library(nnet)   # the engine
+```
+
+```{r}
+#| label: load-data
+#| message: false
+train <- readr::read_csv(here("data", "processed", "train.csv"),
+                         show_col_types = FALSE) |>
+  mutate(SalePrice = log(SalePrice))
+```
+
+## Recipe, spec, workflow
+
+The shared recipe already normalizes all numeric predictors and appends PCs, so
+the MLP sees well-behaved inputs. We tune the hidden-layer width and the weight
+decay `penalty`, and lean on `num_comp` to control input dimensionality.
+
+```{r}
+#| label: recipe-spec
+nnet_recipe <- make_recipe(train)
+
+nnet_spec <- mlp(
+  hidden_units = tune(),
+  penalty      = tune(),
+  epochs       = 300
+) |>
+  # MaxNWts must be large enough for (many predictors) x (hidden units); trace
+  # off to keep the tuning log quiet. linout is set automatically in regression.
+  set_engine("nnet", MaxNWts = 10000, trace = FALSE) |>
+  set_mode("regression")
+
+nnet_wf <- workflow() |>
+  add_recipe(nnet_recipe) |>
+  add_model(nnet_spec)
+```
+
+## Tuning with 10-fold cross-validation
+
+```{r}
+#| label: resamples
+set.seed(42)
+folds <- vfold_cv(train, v = 10, strata = SalePrice)
+```
+
+```{r}
+#| label: grid
+preds <- prep(make_recipe(train, num_comp = 2)) |>
+  bake(new_data = NULL) |>
+  select(-SalePrice, -Id)
+
+nnet_params <- extract_parameter_set_dials(nnet_wf) |>
+  finalize(preds) |>
+  update(
+    hidden_units = hidden_units(range = c(2L, 15L)),
+    num_comp     = num_comp(range = c(2L, 15L))
+  )
+
+set.seed(42)
+nnet_grid <- grid_space_filling(nnet_params, size = 20)
+```
+
+```{r}
+#| label: tune
+#| message: false
+#| warning: false
+nnet_metrics <- metric_set(rmse, rsq)
+
+set.seed(42)
+nnet_tuned <- tune_grid(
+  nnet_wf,
+  resamples = folds,
+  grid      = nnet_grid,
+  metrics   = nnet_metrics,
+  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)
+)
+
+saveRDS(nnet_tuned, here("models", "nnet_res.rds"))
+```
+
+### Tuning results
+
+```{r}
+#| label: tune-plot
+#| fig-cap: "RMSE across the tuning grid (autoplot)."
+#| fig-width: 9
+#| fig-height: 6
+autoplot(nnet_tuned, metric = "rmse")
+```
+
+```{r}
+#| label: tune-table
+show_best(nnet_tuned, metric = "rmse", n = 5)
+```
+
+## Finalize and fit
+
+```{r}
+#| label: finalize
+best_nnet <- select_best(nnet_tuned, metric = "rmse")
+best_nnet
+
+final_nnet_wf <- finalize_workflow(nnet_wf, best_nnet)
+
+set.seed(42)
+nnet_fit <- fit(final_nnet_wf, data = train)
+```
+
+## Cross-validated performance
+
+```{r}
+#| label: cv-metrics
+collect_metrics(nnet_tuned) |>
+  semi_join(best_nnet, by = names(best_nnet)) |>
+  select(.metric, mean, std_err, n)
+```
+
+### Observed vs predicted (out-of-fold)
+
+```{r}
+#| label: obs-pred
+#| fig-cap: "Out-of-fold predicted vs observed log(SalePrice)."
+#| fig-width: 5.5
+#| fig-height: 5
+collect_predictions(nnet_tuned) |>
+  filter(.config == best_nnet$.config) |>
+  ggplot(aes(x = SalePrice, y = .pred)) +
+  geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = 2) +
+  geom_point(alpha = 0.35, colour = house_pal[3]) +
+  labs(title = "Neural Net — CV predicted vs observed",
+       x = "Observed log(SalePrice)", y = "Predicted log(SalePrice)") +
+  coord_equal()
+```
+
+## Save the fitted workflow
+
+```{r}
+#| label: save
+saveRDS(nnet_fit, file = here("models", "nnet_fit.rds"))
+```
+
+## Submission
+
+```bash
+quarto render docs/submission.qmd -P model:nnet
+```
+
+## Next steps
+
+- Continue to the interpretable **[Elastic Net](06-elasticnet.qmd)** linear
+  baseline, then **[SVM](07-svm.qmd)** and **[MARS](08-mars.qmd)**.
+- Back to the **[master results table](../index.qmd)**.

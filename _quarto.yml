@@ -1,0 +1,70 @@
+project:
+  type: website
+  output-dir: _site
+  # Generate data/processed/{train,test}.csv (None-recoding, zero-fills, derived
+  # features) before rendering, so every model document (and CI) has the
+  # features it needs.
+  pre-render: R/03_engineer.R
+  render:
+    # Order matters: every base model saves *_res.rds; the stack consumes them
+    # (so all six base models render BEFORE 05-stack), and index.qmd renders
+    # LAST so its results table can read every model's cross-validated metrics.
+    - "docs/01-eda.qmd"
+    - "docs/02-xgboost.qmd"
+    - "docs/03-random-forest.qmd"
+    - "docs/04-neural-net.qmd"
+    - "docs/06-elasticnet.qmd"
+    - "docs/07-svm.qmd"
+    - "docs/08-mars.qmd"
+    - "docs/05-stack.qmd"
+    - "docs/submission.qmd"
+    - "docs/setup-kaggle.md"
+    - "index.qmd"
+
+# Freezing is critical here. The model docs run real tidymodels tuning over
+# 10-fold CV, which is expensive. `freeze: auto` means a document is only
+# re-executed when its own source changes — CI builds and casual re-renders of
+# OTHER pages will reuse the cached results in `_freeze/` instead of refitting
+# every model from scratch. Commit the `_freeze/` directory so collaborators
+# (and GitHub Actions) get the same cached outputs.
+execute:
+  freeze: auto
+
+website:
+  title: "House Prices — Tidymodels Tour"
+  navbar:
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "EDA"
+        href: docs/01-eda.qmd
+      - text: "Models"
+        menu:
+          - text: "XGBoost"
+            href: docs/02-xgboost.qmd
+          - text: "Random Forest"
+            href: docs/03-random-forest.qmd
+          - text: "Neural Net"
+            href: docs/04-neural-net.qmd
+          - text: "Elastic Net"
+            href: docs/06-elasticnet.qmd
+          - text: "Support Vector Machine"
+            href: docs/07-svm.qmd
+          - text: "MARS"
+            href: docs/08-mars.qmd
+          - text: "Stacked Ensemble"
+            href: docs/05-stack.qmd
+      - text: "Submission"
+        href: docs/submission.qmd
+      - text: "Kaggle Setup"
+        href: docs/setup-kaggle.md
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true
+    df-print: paged

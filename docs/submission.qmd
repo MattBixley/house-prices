@@ -1,0 +1,183 @@
+---
+title: "Building a Kaggle Submission"
+subtitle: "One parameterized document, seven models, leaderboard-ready CSVs"
+params:
+  model: "xgboost"
+execute:
+  freeze: false   # parameterized: must re-run per -P model:, never serve a cached model
+---
+
+> **Where we are:** The final stop on the
+> [House Prices — Tidymodels Tour](../index.qmd). Each model document fits a
+> workflow and saves it to `models/<model>_fit.rds`. This document is
+> **parameterized**: tell it which model, and it loads that fit, predicts on the
+> test set, **exponentiates** predictions back to dollars, and writes a
+> Kaggle-ready CSV.
+
+## How to render this document per model
+
+This `.qmd` has a `model` parameter (default `"xgboost"`). Override it on the
+command line with `-P model:<value>`:
+
+```bash
+quarto render docs/submission.qmd -P model:xgboost
+quarto render docs/submission.qmd -P model:rf
+quarto render docs/submission.qmd -P model:nnet
+quarto render docs/submission.qmd -P model:elasticnet
+quarto render docs/submission.qmd -P model:svm
+quarto render docs/submission.qmd -P model:mars
+quarto render docs/submission.qmd -P model:stack
+```
+
+Each render reads the matching `models/<model>_fit.rds`, writes
+`models/submission_<model>.csv`, and prints the exact upload command. You must
+have fitted (rendered) the corresponding model document first so the `.rds`
+exists.
+
+## Setup
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+source(here::here("R", "00_setup.R"))
+library(tidyverse)
+library(tidymodels)
+library(here)
+```
+
+## Resolve and validate the requested model
+
+```{r}
+#| label: resolve-model
+requested_model <- params$model
+
+# This single lookup table is the source of truth for which models are submittable.
+model_paths <- c(
+  xgboost    = here::here("models", "xgboost_fit.rds"),
+  rf         = here::here("models", "rf_fit.rds"),
+  nnet       = here::here("models", "nnet_fit.rds"),
+  elasticnet = here::here("models", "elasticnet_fit.rds"),
+  svm        = here::here("models", "svm_fit.rds"),
+  mars       = here::here("models", "mars_fit.rds"),
+  stack      = here::here("models", "stack_fit.rds")
+)
+
+if (!requested_model %in% names(model_paths)) {
+  stop(
+    "Unknown model '", requested_model, "'. ",
+    "Choose one of: ", paste(names(model_paths), collapse = ", "), ". ",
+    "Example: quarto render docs/submission.qmd -P model:rf",
+    call. = FALSE
+  )
+}
+
+fit_path <- model_paths[[requested_model]]
+
+if (!file.exists(fit_path)) {
+  stop(
+    "Fitted model not found at '", fit_path, "'. ",
+    "Render the matching model document first (e.g. quarto render ",
+    "docs/02-xgboost.qmd) so the .rds is saved.",
+    call. = FALSE
+  )
+}
+
+message("Building submission for model: ", requested_model)
+message("Loading fitted workflow from: ", fit_path)
+```
+
+We are building a submission for **`r requested_model`**.
+
+## Load the model and the test data
+
+```{r}
+#| label: load
+model_fit <- readRDS(fit_path)
+
+# Use the PROCESSED test set (engineered features added in R/03_engineer.R), so
+# the columns match what every model/recipe expects. Id keys the submission.
+test <- read_csv(here("data", "processed", "test.csv"), show_col_types = FALSE)
+
+glimpse(test)
+```
+
+## Predict and assemble the submission
+
+```{r}
+#| label: predict
+# Every model was trained on log(SalePrice), so predictions are on the log
+# scale. predict() runs the workflow's recipe on the test data, then the model.
+preds <- predict(model_fit, new_data = test)
+
+# Kaggle requires EXACTLY two columns: Id and SalePrice (in dollars). We
+# exponentiate the log-scale prediction back to dollars.
+submission <- tibble(
+  Id        = test$Id,
+  SalePrice = exp(preds$.pred)
+)
+
+# Sanity checks: right number of rows, positive prices, no missing predictions.
+stopifnot(
+  nrow(submission) == nrow(test),
+  all(submission$SalePrice > 0),
+  !anyNA(submission$SalePrice)
+)
+
+head(submission, 10)
+```
+
+## Write the CSV
+
+```{r}
+#| label: write
+out_path <- here("models", paste0("submission_", requested_model, ".csv"))
+write_csv(submission, out_path)
+message("Wrote ", nrow(submission), " predictions to: ", out_path)
+```
+
+A quick summary of the predicted prices (sanity check against the ~$34k–$755k
+range seen in the [EDA](01-eda.qmd)):
+
+```{r}
+#| label: summary
+summary(submission$SalePrice)
+```
+
+## Submit to Kaggle
+
+```{r}
+#| label: kaggle-cmd
+#| echo: false
+#| results: asis
+
+cmd <- sprintf(
+  'kaggle competitions submit -c home-data-for-ml-course -f models/submission_%s.csv -m "%s via tidymodels"',
+  requested_model, requested_model
+)
+cat("```bash\n", cmd, "\n```\n", sep = "")
+```
+
+::: {.callout-note}
+## First time? Authenticate first
+The `kaggle` CLI needs your API token (`~/.kaggle/kaggle.json`) before any
+`submit` or `download` will work. The
+[Kaggle setup guide](setup-kaggle.md) walks through creating and installing it.
+:::
+
+::: {.callout-tip}
+## The leaderboard metric
+This competition is scored on **RMSE between the log of the predicted and the
+log of the observed SalePrice**. Because we train on `log(SalePrice)`, each
+model's CV `rmse` (on the [master results table](../index.qmd)) is already in
+the same units as the leaderboard — a rare, satisfying alignment.
+:::
+
+## Next steps
+
+- Compare each model's leaderboard score against its **CV score** recorded in
+  the [master results table](../index.qmd) — divergence is a lesson in
+  generalization.
+- Re-render for the other models with `-P model:<name>`.
+- Need auth help? See the **[Kaggle setup guide](setup-kaggle.md)**.

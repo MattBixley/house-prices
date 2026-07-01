@@ -1,0 +1,51 @@
+# 00_setup.R ---------------------------------------------------------------
+# Project setup: load core libraries, set seed, define paths, register the
+# parallel backend. Source this at the top of every other R/ script.
+# Keep this file small and side-effect-light.
+
+# Core modelling stack -------------------------------------------------------
+library(tidyverse)    # dplyr, ggplot2, readr, purrr, etc.
+library(tidymodels)   # recipes, parsnip, workflows, tune, yardstick, rsample
+library(here)         # project-root-relative paths (no setwd())
+
+# Resolve tidymodels function-name conflicts in favour of tidymodels.
+tidymodels_prefer()
+
+# Plot colours: Manu "Kererū" palette ----------------------------------------
+# Set a Manu palette as the DEFAULT for every ggplot in the project (no need to
+# add scale_*_manual() to each plot). Discrete scales ramp the base colours to
+# as many levels as a plot needs; continuous scales use them as a gradient.
+library(Manu)
+house_pal  <- Manu::get_pal("Kereru")                       # base colours
+house_ramp <- grDevices::colorRampPalette(house_pal)(12)    # enough for any plot here
+options(
+  ggplot2.discrete.fill     = function() ggplot2::scale_fill_manual(values = house_ramp),
+  ggplot2.discrete.colour   = function() ggplot2::scale_colour_manual(values = house_ramp),
+  ggplot2.continuous.fill   = function() ggplot2::scale_fill_gradientn(colours = house_pal),
+  ggplot2.continuous.colour = function() ggplot2::scale_colour_gradientn(colours = house_pal)
+)
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 12))
+
+# Reproducibility ------------------------------------------------------------
+set.seed(42)
+
+# Paths (all relative to the project root via here::here()) ------------------
+path_data_raw <- here::here("data", "raw")
+path_models   <- here::here("models")
+path_figures  <- here::here("figures")
+
+# Ensure output directories exist (data/raw is owned by the download step).
+for (d in c(path_models, path_figures)) {
+  if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+}
+
+# Parallel backend -----------------------------------------------------------
+# Register doParallel so tune::tune_grid()/fit_resamples() can run folds in
+# parallel. Leave one core free for the OS / RStudio.
+library(doParallel)
+n_cores <- max(1L, parallel::detectCores() - 1L)
+cl <- makePSOCKcluster(n_cores)
+registerDoParallel(cl)
+# NOTE: call stopCluster(cl) at the end of a long modelling run if desired.
+
+message("Setup complete: seed=42, parallel workers=", n_cores)

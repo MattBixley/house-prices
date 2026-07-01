@@ -1,0 +1,260 @@
+---
+title: "Model 1 — XGBoost"
+subtitle: "Gradient-boosted trees, the Kaggle workhorse"
+---
+
+> **Where we are:** First of six model documents in the
+> [House Prices — Tidymodels Tour](../index.qmd). All six follow the *same*
+> structure — recipe → spec → workflow → tune → finalize → evaluate → save — so
+> once you've read this one, the others are quick to skim for the differences.
+> The features come from the [EDA](01-eda.qmd) and the shared `make_recipe()`.
+> Remember the project-wide convention: **we model `log(SalePrice)`**, because
+> Kaggle scores this competition as RMSE on the log scale (see the
+> [master document](../index.qmd)).
+
+## Why XGBoost first?
+
+Gradient-boosted decision trees are the default first reach on tabular Kaggle
+problems. They handle mixed numeric/categorical features, capture interactions
+(quality × size, neighborhood × age) automatically, are robust to monotone
+transforms, and tune to strong accuracy with modest effort. We tune four of the
+most impactful knobs.
+
+## Setup
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+# Project setup: tidyverse + tidymodels, seed = 42, paths, parallel backend.
+source(here::here("R", "00_setup.R"))
+# Shared feature engineering: defines make_recipe(data).
+source(here("R", "02_features.R"))
+
+library(tidyverse)
+library(tidymodels)
+library(here)
+library(vip)         # variable importance plots
+library(xgboost)     # the engine
+```
+
+```{r}
+#| label: load-data
+#| message: false
+
+# Model the LOG of SalePrice — this is the scale Kaggle scores on, so training
+# with RMSE here directly optimises the leaderboard metric.
+train <- readr::read_csv(here("data", "processed", "train.csv"),
+                         show_col_types = FALSE) |>
+  mutate(SalePrice = log(SalePrice))
+```
+
+## The recipe
+
+The shared recipe encodes everything we justified in the [EDA](01-eda.qmd):
+impute `LotFrontage`, Yeo-Johnson the skewed areas, lump rare factor levels,
+dummy-encode, drop the `Id`, and append principal components.
+
+```{r}
+#| label: recipe
+xgb_recipe <- make_recipe(train)
+xgb_recipe
+```
+
+## The model specification
+
+We mark the four tuning parameters with `tune()`. tidymodels fills them in
+during the grid search. Note `set_mode("regression")`.
+
+```{r}
+#| label: spec
+xgb_spec <- boost_tree(
+  trees      = tune(),
+  tree_depth = tune(),
+  learn_rate = tune(),
+  min_n      = tune()
+) |>
+  set_engine("xgboost") |>
+  set_mode("regression")
+
+xgb_spec
+```
+
+## The workflow
+
+A `workflow` bundles the recipe and the model so resampling applies the *exact*
+same preprocessing to every fold — no leakage.
+
+```{r}
+#| label: workflow
+xgb_wf <- workflow() |>
+  add_recipe(xgb_recipe) |>
+  add_model(xgb_spec)
+```
+
+## Tuning with 10-fold cross-validation
+
+```{r}
+#| label: resamples
+# Stratify on the (log) outcome so each fold spans the full price range.
+set.seed(42)
+folds <- vfold_cv(train, v = 10, strata = SalePrice)
+```
+
+```{r}
+#| label: grid
+# Predictors used to finalize data-dependent params (num_comp upper bound).
+preds <- prep(make_recipe(train, num_comp = 2)) |>
+  bake(new_data = NULL) |>
+  select(-SalePrice, -Id)
+
+xgb_params <- extract_parameter_set_dials(xgb_wf) |>
+  finalize(preds) |>
+  update(num_comp = num_comp(range = c(2L, 15L)))
+
+set.seed(42)
+xgb_grid <- grid_space_filling(xgb_params, size = 20)
+```
+
+```{r}
+#| label: tune
+#| message: false
+#| warning: false
+
+# Score every candidate on RMSE (the competition metric on the log scale) and
+# R-squared (interpretable goodness-of-fit).
+xgb_metrics <- metric_set(rmse, rsq)
+
+set.seed(42)
+xgb_tuned <- tune_grid(
+  xgb_wf,
+  resamples = folds,
+  grid      = xgb_grid,
+  metrics   = xgb_metrics,
+  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)
+)
+```
+
+```{r}
+#| label: save-res
+saveRDS(xgb_tuned, here("models", "xgboost_res.rds"))
+```
+
+### Tuning results
+
+```{r}
+#| label: tune-plot
+#| fig-cap: "RMSE across the tuning grid for each hyperparameter (autoplot)."
+#| fig-width: 9
+#| fig-height: 6
+
+autoplot(xgb_tuned, metric = "rmse")
+```
+
+```{r}
+#| label: tune-table
+# The top candidates by RMSE (lower is better).
+show_best(xgb_tuned, metric = "rmse", n = 5)
+```
+
+## Finalize and fit on the full training set
+
+```{r}
+#| label: finalize
+best_xgb <- select_best(xgb_tuned, metric = "rmse")
+best_xgb
+
+final_xgb_wf <- finalize_workflow(xgb_wf, best_xgb)
+
+# Fit the finalized workflow on ALL the training data — the model we ship.
+set.seed(42)
+xgb_fit <- fit(final_xgb_wf, data = train)
+```
+
+## Cross-validated performance
+
+The fairest estimate of out-of-sample skill is the CV score of the chosen
+configuration — not the fit on the full training data (which overfits by
+construction).
+
+```{r}
+#| label: cv-metrics
+collect_metrics(xgb_tuned) |>
+  semi_join(best_xgb, by = names(best_xgb)) |>
+  select(.metric, mean, std_err, n)
+```
+
+::: {.callout-tip}
+The `rmse` here is on the **log(SalePrice)** scale — the same units Kaggle
+reports on the leaderboard. These CV metrics feed the results table on the
+[master document](../index.qmd) automatically.
+:::
+
+### Observed vs predicted (out-of-fold)
+
+Built from the held-out CV predictions for the best configuration — so it
+reflects generalization, not memorization. Points on the diagonal are perfect.
+
+```{r}
+#| label: obs-pred
+#| fig-cap: "Out-of-fold predicted vs observed log(SalePrice)."
+#| fig-width: 5.5
+#| fig-height: 5
+
+collect_predictions(xgb_tuned) |>
+  filter(.config == best_xgb$.config) |>
+  ggplot(aes(x = SalePrice, y = .pred)) +
+  geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = 2) +
+  geom_point(alpha = 0.35, colour = house_pal[1]) +
+  labs(title = "XGBoost — CV predicted vs observed",
+       x = "Observed log(SalePrice)", y = "Predicted log(SalePrice)") +
+  coord_equal()
+```
+
+### Variable importance
+
+```{r}
+#| label: vip
+#| fig-cap: "Top features by XGBoost gain. Quality and size dominate."
+#| fig-width: 7
+#| fig-height: 5
+
+xgb_fit |>
+  extract_fit_parsnip() |>
+  vip(num_features = 15, geom = "col",
+      aesthetics = list(fill = house_pal[1])) +
+  labs(title = "XGBoost variable importance") +
+  theme_minimal()
+```
+
+`OverallQual`, `GrLivArea`, the engineered `TotalSF`, and neighborhood/age
+features sit at the top — exactly the signal the [EDA](01-eda.qmd) surfaced.
+
+## Save the fitted workflow
+
+```{r}
+#| label: save
+saveRDS(xgb_fit, file = here("models", "xgboost_fit.rds"))
+```
+
+## Submission
+
+Generate this model's leaderboard CSV with the **parameterized**
+[submission document](submission.qmd):
+
+```bash
+quarto render docs/submission.qmd -P model:xgboost
+```
+
+That loads `models/xgboost_fit.rds`, predicts on the test set, **exponentiates**
+back to dollars, and writes `models/submission_xgboost.csv` (columns `Id`,
+`SalePrice`). See the [Kaggle setup guide](setup-kaggle.md) for authentication.
+
+## Next steps
+
+- Compare against the **[Random Forest](03-random-forest.qmd)** — a robust,
+  almost-no-tuning baseline.
+- Then the **[Neural Net](04-neural-net.qmd)**, **[Elastic Net](06-elasticnet.qmd)**,
+  **[SVM](07-svm.qmd)** and **[MARS](08-mars.qmd)**.
+- Record this model's CV scores in the **[master results table](../index.qmd)**.

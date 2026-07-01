@@ -1,0 +1,217 @@
+---
+title: "House Prices — Tidymodels Tour"
+subtitle: "A pedagogical walk through the Kaggle House Prices competition with R and tidymodels"
+---
+
+## Welcome
+
+This site is a guided tour of the Kaggle
+[**Housing Prices Competition for Kaggle Learn Users**](https://www.kaggle.com/competitions/home-data-for-ml-course)
+— the Ames, Iowa house-price dataset — worked end to end in R with the
+[tidymodels](https://www.tidymodels.org/) framework. It is written for an R user
+who is comfortable with the language and with statistics, but is **new to
+Kaggle** — so we narrate the *competition workflow* as well as the modelling
+reasoning, and we lean on `ggplot2` for every chart.
+
+It is the regression companion to the classification-flavoured
+[Titanic tour](https://www.kaggle.com/competitions/titanic): same structure,
+same tidymodels muscle memory, different problem shape.
+
+### What is this competition?
+
+- You get a **training set** (`data/raw/train.csv`, 1460 houses) where the
+  outcome is known: the **`SalePrice`** in dollars.
+- You get a **test set** (`data/raw/test.csv`, 1459 houses) with the *same 79
+  features but no `SalePrice`*.
+- Your job: **predict `SalePrice` for every test house**, write those
+  predictions to a CSV (`Id,SalePrice`), and upload it. Kaggle scores your CSV
+  and places you on the leaderboard.
+
+::: {.callout-tip}
+## The metric shapes everything
+Submissions are scored on **Root-Mean-Squared-Error between the logarithm of the
+predicted and the logarithm of the observed SalePrice**. Taking logs means an
+error on a cheap house counts as much as a proportional error on an expensive
+one. So throughout this project **we model `log(SalePrice)`** — which makes each
+model's cross-validated `rmse` directly comparable to the leaderboard score.
+:::
+
+## The goal
+
+Predict `SalePrice` for the 1459 test houses as accurately as possible (lowest
+log-RMSE), and document the reasoning so the whole thing is reproducible and
+teachable.
+
+We fit **six** different model families on identical features so they can be
+compared apples-to-apples, then blend them in a stacked ensemble:
+
+| Model | Engine | Why it's interesting |
+|-------|--------|----------------------|
+| [XGBoost](docs/02-xgboost.qmd) | `xgboost` | Gradient-boosted trees — the Kaggle workhorse |
+| [Random Forest](docs/03-random-forest.qmd) | `ranger` | Bagged trees — robust, low-tuning baseline |
+| [Neural Net](docs/04-neural-net.qmd) | `nnet` | A small MLP — needs normalized inputs |
+| [Elastic Net](docs/06-elasticnet.qmd) | `glmnet` | Penalised linear baseline — interpretable |
+| [SVM (RBF)](docs/07-svm.qmd) | `kernlab` | Nonlinear kernel surface — diverse errors |
+| [MARS](docs/08-mars.qmd) | `earth` | Piecewise-linear splines — nonlinear, interpretable |
+| [Stacked Ensemble](docs/05-stack.qmd) | `stacks` | Learns a blend over all of the above |
+
+## How the documents link together
+
+This is a small Quarto **website**. `index.qmd` (this page) is the master
+document; everything else lives in `docs/` and the navbar ties them into a
+narrative:
+
+```
+Home (index) → EDA → Models {XGBoost, RF, Neural Net, Elastic Net, SVM, MARS} → Stack → Submission → Kaggle Setup
+```
+
+- **[Exploratory Data Analysis](docs/01-eda.qmd)** — look at the data, find the
+  patterns (quality, size, neighborhood, age, the log-price transform, the "NA
+  means absent" gotcha), and *motivate* the feature engineering.
+- **Model docs** — each follows the *same* structure (recipe → spec → workflow →
+  tune → finalize → evaluate → save), so once you've read one, the others are
+  easy to skim.
+- **[Submission](docs/submission.qmd)** — a single *parameterized* document that
+  turns any saved model into a leaderboard-ready CSV.
+- **[Kaggle Setup](docs/setup-kaggle.md)** — authenticate the Kaggle CLI.
+
+## Project structure
+
+```
+house-prices/
+├── _quarto.yml              # website config (theme, navbar, freeze, pre-render)
+├── index.qmd                # ← you are here (master document)
+├── renv.lock                # pinned package versions (reproducibility)
+├── R/
+│   ├── 00_setup.R           # libraries, seed=42, paths, parallel backend
+│   ├── 01_eda.R             # standalone EDA script
+│   ├── 02_features.R        # make_recipe(data) — the SHARED feature recipe
+│   └── 03_engineer.R        # NA→None/0 recoding + derived features (pre-render)
+├── data/
+│   ├── raw/                 # train.csv, test.csv, sample_submission.csv, data_description.txt
+│   └── processed/           # engineered train.csv / test.csv (built by 03_engineer.R)
+├── docs/
+│   ├── 01-eda.qmd           # exploratory analysis
+│   ├── 02-xgboost.qmd       # boosted trees
+│   ├── 03-random-forest.qmd # ranger random forest
+│   ├── 04-neural-net.qmd    # nnet MLP
+│   ├── 06-elasticnet.qmd    # glmnet penalised linear
+│   ├── 07-svm.qmd           # kernlab RBF SVM
+│   ├── 08-mars.qmd          # earth MARS
+│   ├── 05-stack.qmd         # stacked ensemble
+│   ├── submission.qmd       # parameterized: build a submission CSV
+│   └── setup-kaggle.md      # Kaggle CLI auth guide
+├── models/                  # fitted workflows (*_fit.rds), tuning (*_res.rds), submission_*.csv
+└── figures/                 # exported plots
+```
+
+The two shared pieces are **`R/03_engineer.R`** (deterministic up-front
+engineering) and **`R/02_features.R`** (`make_recipe()`). Every model sources the
+recipe so they all train on the *same* engineered features — that is what makes
+the comparison fair.
+
+## How to reproduce
+
+Everything is pinned with [`renv`](https://rstudio.github.io/renv/) and uses
+`here::here()` for paths, so there is no `setwd()` fragility.
+
+1. **Restore the environment:**
+
+   ```r
+   renv::restore()
+   ```
+
+2. **Get the data** — the CSVs ship in `data/raw/`; or follow
+   [the Kaggle setup guide](docs/setup-kaggle.md) to pull the official files.
+
+3. **Render the site.** Because of `freeze: auto`, the heavy model fits only run
+   the first time (or when a model doc changes):
+
+   ```bash
+   quarto render
+   ```
+
+   Logical run order: EDA → each base model doc (each saves its tuning result
+   and fitted workflow to `models/`) → stack → submission.
+
+::: {.callout-note}
+`set.seed(42)` is set in `R/00_setup.R` and the resampling folds are seeded, so
+CV results are reproducible across machines that share the `renv` lockfile.
+:::
+
+## Results summary
+
+The table below compares the six base models on **cross-validated** `rmse` and
+`rsq`, read **directly** from each model's saved tuning results
+(`models/*_res.rds`), so they update automatically on every render. No copying.
+The `rmse` is on the **log(SalePrice)** scale — the same units as the Kaggle
+leaderboard.
+
+```{r}
+#| label: results-summary
+#| message: false
+#| warning: false
+#| echo: true
+
+library(tidyverse)
+library(tidymodels)
+library(here)
+
+# Pull the best (rmse-selected) configuration's CV metrics from a saved
+# tune_grid result.
+cv_metrics <- function(path, label, notes) {
+  res  <- readRDS(path)
+  best <- select_best(res, metric = "rmse")
+  m    <- collect_metrics(res) |> semi_join(best, by = names(best))
+  tibble(
+    Model           = label,
+    `CV RMSE (log)` = m$mean[m$.metric == "rmse"],
+    `CV R-squared`  = m$mean[m$.metric == "rsq"],
+    `Best num_comp` = best$num_comp,
+    Notes           = notes
+  )
+}
+
+bind_rows(
+  cv_metrics(here("models", "xgboost_res.rds"), "XGBoost",
+             "tuned trees / tree_depth / learn_rate / min_n + num_comp"),
+  cv_metrics(here("models", "rf_res.rds"), "Random Forest",
+             "tuned mtry / min_n + num_comp; 1000 trees"),
+  cv_metrics(here("models", "nnet_res.rds"), "Neural Net",
+             "tuned hidden_units / penalty + num_comp; PCA-normalized"),
+  cv_metrics(here("models", "elasticnet_res.rds"), "Elastic Net",
+             "glmnet: tuned penalty / mixture + num_comp"),
+  cv_metrics(here("models", "svm_res.rds"), "SVM (RBF)",
+             "kernlab: tuned cost / rbf_sigma + num_comp"),
+  cv_metrics(here("models", "mars_res.rds"), "MARS",
+             "earth: tuned num_terms / prod_degree + num_comp")
+) |>
+  arrange(`CV RMSE (log)`) |>
+  mutate(across(c(`CV RMSE (log)`, `CV R-squared`), \(x) round(x, 4))) |>
+  knitr::kable(align = "lrrrl")
+```
+
+The [stacked ensemble](docs/05-stack.qmd) blends all six; its real test is the
+Kaggle leaderboard rather than a single CV number.
+
+## The submission workflow at a glance
+
+Once a model is fitted and saved (each model doc does this), turning it into a
+leaderboard entry is mechanical and wrapped in the **[parameterized submission
+document](docs/submission.qmd)**:
+
+```bash
+quarto render docs/submission.qmd -P model:xgboost
+quarto render docs/submission.qmd -P model:stack
+```
+
+That loads `models/<model>_fit.rds`, predicts on the test set, **exponentiates**
+the log predictions back to dollars, writes `models/submission_<model>.csv`
+(`Id`, `SalePrice`), and prints the exact `kaggle competitions submit` command.
+
+## Next steps
+
+- Start with the **[Exploratory Data Analysis](docs/01-eda.qmd)**.
+- Then read the model docs, beginning with **[XGBoost](docs/02-xgboost.qmd)**.
+- Build a leaderboard CSV with the **[Submission](docs/submission.qmd)** doc.
+- Stuck on authentication? See the **[Kaggle Setup guide](docs/setup-kaggle.md)**.

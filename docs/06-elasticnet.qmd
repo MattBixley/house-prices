@@ -1,0 +1,187 @@
+---
+title: "Model 4 — Elastic Net"
+subtitle: "Penalised linear regression via glmnet — interpretable baseline"
+---
+
+> **Where we are:** Fourth of six model documents in the
+> [House Prices — Tidymodels Tour](../index.qmd). Same structure as the others;
+> we model `log(SalePrice)` and score on RMSE.
+
+## Why elastic net?
+
+A regularised linear model is the classic, interpretable regression baseline —
+and on the log scale, with the Yeo-Johnson-transformed features from the recipe,
+it is genuinely competitive on Ames. `glmnet` blends **ridge** (L2) and
+**lasso** (L1) penalties: `penalty` sets the total shrinkage and `mixture` the
+L1/L2 balance (1 = pure lasso, 0 = pure ridge). Lasso also does automatic
+feature selection, which is handy given ~200 dummy columns.
+
+## Setup
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+source(here::here("R", "00_setup.R"))
+source(here("R", "02_features.R"))
+
+library(tidyverse)
+library(tidymodels)
+library(here)
+library(vip)
+library(glmnet)   # the engine
+```
+
+```{r}
+#| label: load-data
+#| message: false
+train <- readr::read_csv(here("data", "processed", "train.csv"),
+                         show_col_types = FALSE) |>
+  mutate(SalePrice = log(SalePrice))
+```
+
+## Recipe, spec, workflow
+
+```{r}
+#| label: recipe-spec
+en_recipe <- make_recipe(train)
+
+en_spec <- linear_reg(
+  penalty = tune(),
+  mixture = tune()
+) |>
+  set_engine("glmnet") |>
+  set_mode("regression")
+
+en_wf <- workflow() |>
+  add_recipe(en_recipe) |>
+  add_model(en_spec)
+```
+
+## Tuning with 10-fold cross-validation
+
+```{r}
+#| label: resamples
+set.seed(42)
+folds <- vfold_cv(train, v = 10, strata = SalePrice)
+```
+
+```{r}
+#| label: grid
+preds <- prep(make_recipe(train, num_comp = 2)) |>
+  bake(new_data = NULL) |>
+  select(-SalePrice, -Id)
+
+en_params <- extract_parameter_set_dials(en_wf) |>
+  finalize(preds) |>
+  update(num_comp = num_comp(range = c(2L, 15L)))
+
+set.seed(42)
+en_grid <- grid_space_filling(en_params, size = 20)
+```
+
+```{r}
+#| label: tune
+#| message: false
+#| warning: false
+en_metrics <- metric_set(rmse, rsq)
+
+set.seed(42)
+en_tuned <- tune_grid(
+  en_wf,
+  resamples = folds,
+  grid      = en_grid,
+  metrics   = en_metrics,
+  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)
+)
+
+saveRDS(en_tuned, here("models", "elasticnet_res.rds"))
+```
+
+### Tuning results
+
+```{r}
+#| label: tune-plot
+#| fig-cap: "RMSE across the tuning grid (autoplot)."
+#| fig-width: 9
+#| fig-height: 6
+autoplot(en_tuned, metric = "rmse")
+```
+
+```{r}
+#| label: tune-table
+show_best(en_tuned, metric = "rmse", n = 5)
+```
+
+## Finalize and fit
+
+```{r}
+#| label: finalize
+best_en <- select_best(en_tuned, metric = "rmse")
+best_en
+
+final_en_wf <- finalize_workflow(en_wf, best_en)
+
+set.seed(42)
+en_fit <- fit(final_en_wf, data = train)
+```
+
+## Cross-validated performance
+
+```{r}
+#| label: cv-metrics
+collect_metrics(en_tuned) |>
+  semi_join(best_en, by = names(best_en)) |>
+  select(.metric, mean, std_err, n)
+```
+
+### Observed vs predicted (out-of-fold)
+
+```{r}
+#| label: obs-pred
+#| fig-cap: "Out-of-fold predicted vs observed log(SalePrice)."
+#| fig-width: 5.5
+#| fig-height: 5
+collect_predictions(en_tuned) |>
+  filter(.config == best_en$.config) |>
+  ggplot(aes(x = SalePrice, y = .pred)) +
+  geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = 2) +
+  geom_point(alpha = 0.35, colour = house_pal[4]) +
+  labs(title = "Elastic Net — CV predicted vs observed",
+       x = "Observed log(SalePrice)", y = "Predicted log(SalePrice)") +
+  coord_equal()
+```
+
+### Variable importance
+
+```{r}
+#| label: vip
+#| fig-cap: "Largest standardised coefficients at the tuned penalty."
+#| fig-width: 7
+#| fig-height: 5
+en_fit |>
+  extract_fit_parsnip() |>
+  vip(num_features = 15, geom = "col",
+      aesthetics = list(fill = house_pal[4])) +
+  labs(title = "Elastic net — top coefficients") +
+  theme_minimal()
+```
+
+## Save the fitted workflow
+
+```{r}
+#| label: save
+saveRDS(en_fit, file = here("models", "elasticnet_fit.rds"))
+```
+
+## Submission
+
+```bash
+quarto render docs/submission.qmd -P model:elasticnet
+```
+
+## Next steps
+
+- Continue to the **[SVM](07-svm.qmd)** and **[MARS](08-mars.qmd)** models.
+- Back to the **[master results table](../index.qmd)**.

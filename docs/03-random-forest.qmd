@@ -1,0 +1,192 @@
+---
+title: "Model 2 — Random Forest"
+subtitle: "Bagged trees via ranger — a robust, low-tuning baseline"
+---
+
+> **Where we are:** Second of six model documents in the
+> [House Prices — Tidymodels Tour](../index.qmd). Same structure as
+> [XGBoost](02-xgboost.qmd): recipe → spec → workflow → tune → finalize →
+> evaluate → save. We model `log(SalePrice)` and score on RMSE.
+
+## Why a random forest?
+
+Where boosting builds trees sequentially to correct residuals, a random forest
+*bags* hundreds of decorrelated deep trees and averages them. It is famously
+hard to overfit, needs almost no tuning (really just `mtry`), and gives a strong
+baseline plus a permutation-importance read on which features matter.
+
+## Setup
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+source(here::here("R", "00_setup.R"))
+source(here("R", "02_features.R"))
+
+library(tidyverse)
+library(tidymodels)
+library(here)
+library(vip)
+library(ranger)   # the engine
+```
+
+```{r}
+#| label: load-data
+#| message: false
+train <- readr::read_csv(here("data", "processed", "train.csv"),
+                         show_col_types = FALSE) |>
+  mutate(SalePrice = log(SalePrice))
+```
+
+## Recipe, spec, workflow
+
+```{r}
+#| label: recipe-spec
+rf_recipe <- make_recipe(train)
+
+# 1000 trees fixed (more is just slower, not better once stable); tune mtry and
+# min_n. importance = "permutation" so we can plot variable importance.
+rf_spec <- rand_forest(
+  mtry  = tune(),
+  min_n = tune(),
+  trees = 1000
+) |>
+  set_engine("ranger", importance = "permutation") |>
+  set_mode("regression")
+
+rf_wf <- workflow() |>
+  add_recipe(rf_recipe) |>
+  add_model(rf_spec)
+```
+
+## Tuning with 10-fold cross-validation
+
+```{r}
+#| label: resamples
+set.seed(42)
+folds <- vfold_cv(train, v = 10, strata = SalePrice)
+```
+
+```{r}
+#| label: grid
+# mtry's upper bound depends on the number of predictors, so finalize against
+# the baked training data.
+preds <- prep(make_recipe(train, num_comp = 2)) |>
+  bake(new_data = NULL) |>
+  select(-SalePrice, -Id)
+
+rf_params <- extract_parameter_set_dials(rf_wf) |>
+  finalize(preds) |>
+  update(num_comp = num_comp(range = c(2L, 15L)))
+
+set.seed(42)
+rf_grid <- grid_space_filling(rf_params, size = 20)
+```
+
+```{r}
+#| label: tune
+#| message: false
+#| warning: false
+rf_metrics <- metric_set(rmse, rsq)
+
+set.seed(42)
+rf_tuned <- tune_grid(
+  rf_wf,
+  resamples = folds,
+  grid      = rf_grid,
+  metrics   = rf_metrics,
+  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)
+)
+
+saveRDS(rf_tuned, here("models", "rf_res.rds"))
+```
+
+### Tuning results
+
+```{r}
+#| label: tune-plot
+#| fig-cap: "RMSE across the tuning grid (autoplot)."
+#| fig-width: 9
+#| fig-height: 6
+autoplot(rf_tuned, metric = "rmse")
+```
+
+```{r}
+#| label: tune-table
+show_best(rf_tuned, metric = "rmse", n = 5)
+```
+
+## Finalize and fit
+
+```{r}
+#| label: finalize
+best_rf <- select_best(rf_tuned, metric = "rmse")
+best_rf
+
+final_rf_wf <- finalize_workflow(rf_wf, best_rf)
+
+set.seed(42)
+rf_fit <- fit(final_rf_wf, data = train)
+```
+
+## Cross-validated performance
+
+```{r}
+#| label: cv-metrics
+collect_metrics(rf_tuned) |>
+  semi_join(best_rf, by = names(best_rf)) |>
+  select(.metric, mean, std_err, n)
+```
+
+### Observed vs predicted (out-of-fold)
+
+```{r}
+#| label: obs-pred
+#| fig-cap: "Out-of-fold predicted vs observed log(SalePrice)."
+#| fig-width: 5.5
+#| fig-height: 5
+collect_predictions(rf_tuned) |>
+  filter(.config == best_rf$.config) |>
+  ggplot(aes(x = SalePrice, y = .pred)) +
+  geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = 2) +
+  geom_point(alpha = 0.35, colour = house_pal[1]) +
+  labs(title = "Random Forest — CV predicted vs observed",
+       x = "Observed log(SalePrice)", y = "Predicted log(SalePrice)") +
+  coord_equal()
+```
+
+### Variable importance
+
+```{r}
+#| label: vip
+#| fig-cap: "Top features by permutation importance."
+#| fig-width: 7
+#| fig-height: 5
+rf_fit |>
+  extract_fit_parsnip() |>
+  vip(num_features = 15, geom = "col",
+      aesthetics = list(fill = house_pal[2])) +
+  labs(title = "Random forest variable importance") +
+  theme_minimal()
+```
+
+## Save the fitted workflow
+
+```{r}
+#| label: save
+saveRDS(rf_fit, file = here("models", "rf_fit.rds"))
+```
+
+## Submission
+
+```bash
+quarto render docs/submission.qmd -P model:rf
+```
+
+## Next steps
+
+- Continue to the **[Neural Net](04-neural-net.qmd)**, which leans on the
+  normalized/PCA recipe.
+- Back to the **[master results table](../index.qmd)**.

@@ -1,0 +1,139 @@
+---
+title: "Model 7 — Stacked Ensemble"
+subtitle: "Blending six base models (XGBoost, RF, Neural Net, Elastic Net, SVM, MARS) with stacks"
+---
+
+> **Where we are:** The capstone of the
+> [House Prices — Tidymodels Tour](../index.qmd). The six base-model documents
+> ([XGBoost](02-xgboost.qmd), [Random Forest](03-random-forest.qmd),
+> [Neural Net](04-neural-net.qmd), [Elastic Net](06-elasticnet.qmd),
+> [SVM](07-svm.qmd), [MARS](08-mars.qmd)) each saved their *tuning results*
+> (every candidate model and its out-of-fold predictions) to
+> `models/<model>_res.rds`. Here we feed all of those candidates to
+> [`stacks`](https://stacks.tidymodels.org/), which learns a regularised linear
+> blend over them — usually beating any single model, because the members make
+> different mistakes.
+
+## Why stack?
+
+Each model family has a different inductive bias: gradient boosting chases
+interactions, the random forest averages decorrelated trees, the neural net and
+SVM learn smooth functions of the principal components, the elastic net is
+linear, MARS is piecewise-linear. A stack fits a *meta-learner* (penalised
+linear regression) on the members' out-of-fold predictions, keeping only the
+candidates that pull their weight. Everything stays on the `log(SalePrice)`
+scale until the final submission.
+
+## Setup
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+source(here::here("R", "00_setup.R"))
+
+library(tidyverse)
+library(tidymodels)
+library(here)
+library(stacks)
+# The member engines must be attached so fit_members() can refit them.
+library(ranger)
+library(xgboost)
+library(nnet)
+library(glmnet)
+library(kernlab)
+library(earth)
+```
+
+## Load the tuning results
+
+```{r}
+#| label: load-candidates
+# Each *_res.rds is a tune_grid result saved with control_grid(save_pred = TRUE,
+# save_workflow = TRUE) — exactly what stacks needs to assemble candidates.
+xgb_res  <- readRDS(here("models", "xgboost_res.rds"))
+rf_res   <- readRDS(here("models", "rf_res.rds"))
+nnet_res <- readRDS(here("models", "nnet_res.rds"))
+en_res   <- readRDS(here("models", "elasticnet_res.rds"))
+svm_res  <- readRDS(here("models", "svm_res.rds"))
+mars_res <- readRDS(here("models", "mars_res.rds"))
+```
+
+## Build, blend, and fit the ensemble
+
+```{r}
+#| label: build-stack
+#| message: false
+#| warning: false
+
+set.seed(42)
+house_stack <- stacks() |>
+  add_candidates(xgb_res) |>
+  add_candidates(rf_res) |>
+  add_candidates(nnet_res) |>
+  add_candidates(en_res) |>
+  add_candidates(svm_res) |>
+  add_candidates(mars_res) |>
+  blend_predictions() |>     # LASSO over candidates -> keeps the useful ones
+  fit_members()              # refit the retained members on all training data
+
+house_stack
+```
+
+### Which members survived the blend?
+
+```{r}
+#| label: weights
+#| fig-cap: "Blended stacking coefficients — the members the meta-learner kept."
+#| fig-width: 8
+#| fig-height: 5
+autoplot(house_stack, type = "weights") +
+  scale_colour_manual(values = grDevices::colorRampPalette(house_pal)(10)) +
+  scale_fill_manual(values = grDevices::colorRampPalette(house_pal)(10))
+```
+
+The boosted trees and elastic net usually earn the largest weights, with the SVM
+and neural net contributing diverse corrections — different biases, combined.
+
+## Save the fitted ensemble
+
+```{r}
+#| label: save
+saveRDS(house_stack, here("models", "stack_fit.rds"))
+```
+
+## Build the Kaggle submission
+
+```{r}
+#| label: submit
+test <- read_csv(here("data", "processed", "test.csv"), show_col_types = FALSE)
+
+# Predictions are on the log scale (we trained on log(SalePrice)); exponentiate
+# back to dollars for the leaderboard.
+stack_pred <- predict(house_stack, new_data = test)
+
+submission <- tibble(
+  Id        = test$Id,
+  SalePrice = exp(stack_pred$.pred)
+)
+write_csv(submission, here("models", "submission_stack.csv"))
+
+summary(submission$SalePrice)
+```
+
+Upload it the same way as any other model:
+
+```bash
+kaggle competitions submit -c home-data-for-ml-course -f models/submission_stack.csv \
+  -m "stacked ensemble (xgb + rf + nnet + glmnet + svm + mars) via stacks"
+```
+
+## Next steps
+
+- The parameterized [submission doc](submission.qmd) also accepts
+  `-P model:stack`.
+- Compare the stack's leaderboard score against the individual models on the
+  [master document](../index.qmd) — does the blend actually win on the held-out
+  Kaggle test set, or only in cross-validation?
+- See the [Kaggle setup guide](setup-kaggle.md) for authentication.

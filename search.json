@@ -1,0 +1,723 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "",
+    "text": "This site is a guided tour of the Kaggle Housing Prices Competition for Kaggle Learn Users — the Ames, Iowa house-price dataset — worked end to end in R with the tidymodels framework. It is written for an R user who is comfortable with the language and with statistics, but is new to Kaggle — so we narrate the competition workflow as well as the modelling reasoning, and we lean on ggplot2 for every chart.\nIt is the regression companion to the classification-flavoured Titanic tour: same structure, same tidymodels muscle memory, different problem shape.\n\n\n\nYou get a training set (data/raw/train.csv, 1460 houses) where the outcome is known: the SalePrice in dollars.\nYou get a test set (data/raw/test.csv, 1459 houses) with the same 79 features but no SalePrice.\nYour job: predict SalePrice for every test house, write those predictions to a CSV (Id,SalePrice), and upload it. Kaggle scores your CSV and places you on the leaderboard.\n\n\n\n\n\n\n\nTipThe metric shapes everything\n\n\n\nSubmissions are scored on Root-Mean-Squared-Error between the logarithm of the predicted and the logarithm of the observed SalePrice. Taking logs means an error on a cheap house counts as much as a proportional error on an expensive one. So throughout this project we model log(SalePrice) — which makes each model’s cross-validated rmse directly comparable to the leaderboard score."
+  },
+  {
+    "objectID": "index.html#welcome",
+    "href": "index.html#welcome",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "",
+    "text": "This site is a guided tour of the Kaggle Housing Prices Competition for Kaggle Learn Users — the Ames, Iowa house-price dataset — worked end to end in R with the tidymodels framework. It is written for an R user who is comfortable with the language and with statistics, but is new to Kaggle — so we narrate the competition workflow as well as the modelling reasoning, and we lean on ggplot2 for every chart.\nIt is the regression companion to the classification-flavoured Titanic tour: same structure, same tidymodels muscle memory, different problem shape.\n\n\n\nYou get a training set (data/raw/train.csv, 1460 houses) where the outcome is known: the SalePrice in dollars.\nYou get a test set (data/raw/test.csv, 1459 houses) with the same 79 features but no SalePrice.\nYour job: predict SalePrice for every test house, write those predictions to a CSV (Id,SalePrice), and upload it. Kaggle scores your CSV and places you on the leaderboard.\n\n\n\n\n\n\n\nTipThe metric shapes everything\n\n\n\nSubmissions are scored on Root-Mean-Squared-Error between the logarithm of the predicted and the logarithm of the observed SalePrice. Taking logs means an error on a cheap house counts as much as a proportional error on an expensive one. So throughout this project we model log(SalePrice) — which makes each model’s cross-validated rmse directly comparable to the leaderboard score."
+  },
+  {
+    "objectID": "index.html#the-goal",
+    "href": "index.html#the-goal",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "The goal",
+    "text": "The goal\nPredict SalePrice for the 1459 test houses as accurately as possible (lowest log-RMSE), and document the reasoning so the whole thing is reproducible and teachable.\nWe fit six different model families on identical features so they can be compared apples-to-apples, then blend them in a stacked ensemble:\n\n\n\nModel\nEngine\nWhy it’s interesting\n\n\n\n\nXGBoost\nxgboost\nGradient-boosted trees — the Kaggle workhorse\n\n\nRandom Forest\nranger\nBagged trees — robust, low-tuning baseline\n\n\nNeural Net\nnnet\nA small MLP — needs normalized inputs\n\n\nElastic Net\nglmnet\nPenalised linear baseline — interpretable\n\n\nSVM (RBF)\nkernlab\nNonlinear kernel surface — diverse errors\n\n\nMARS\nearth\nPiecewise-linear splines — nonlinear, interpretable\n\n\nStacked Ensemble\nstacks\nLearns a blend over all of the above"
+  },
+  {
+    "objectID": "index.html#how-the-documents-link-together",
+    "href": "index.html#how-the-documents-link-together",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "How the documents link together",
+    "text": "How the documents link together\nThis is a small Quarto website. index.qmd (this page) is the master document; everything else lives in docs/ and the navbar ties them into a narrative:\nHome (index) → EDA → Models {XGBoost, RF, Neural Net, Elastic Net, SVM, MARS} → Stack → Submission → Kaggle Setup\n\nExploratory Data Analysis — look at the data, find the patterns (quality, size, neighborhood, age, the log-price transform, the “NA means absent” gotcha), and motivate the feature engineering.\nModel docs — each follows the same structure (recipe → spec → workflow → tune → finalize → evaluate → save), so once you’ve read one, the others are easy to skim.\nSubmission — a single parameterized document that turns any saved model into a leaderboard-ready CSV.\nKaggle Setup — authenticate the Kaggle CLI."
+  },
+  {
+    "objectID": "index.html#project-structure",
+    "href": "index.html#project-structure",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "Project structure",
+    "text": "Project structure\nhouse-prices/\n├── _quarto.yml              # website config (theme, navbar, freeze, pre-render)\n├── index.qmd                # ← you are here (master document)\n├── renv.lock                # pinned package versions (reproducibility)\n├── R/\n│   ├── 00_setup.R           # libraries, seed=42, paths, parallel backend\n│   ├── 01_eda.R             # standalone EDA script\n│   ├── 02_features.R        # make_recipe(data) — the SHARED feature recipe\n│   └── 03_engineer.R        # NA→None/0 recoding + derived features (pre-render)\n├── data/\n│   ├── raw/                 # train.csv, test.csv, sample_submission.csv, data_description.txt\n│   └── processed/           # engineered train.csv / test.csv (built by 03_engineer.R)\n├── docs/\n│   ├── 01-eda.qmd           # exploratory analysis\n│   ├── 02-xgboost.qmd       # boosted trees\n│   ├── 03-random-forest.qmd # ranger random forest\n│   ├── 04-neural-net.qmd    # nnet MLP\n│   ├── 06-elasticnet.qmd    # glmnet penalised linear\n│   ├── 07-svm.qmd           # kernlab RBF SVM\n│   ├── 08-mars.qmd          # earth MARS\n│   ├── 05-stack.qmd         # stacked ensemble\n│   ├── submission.qmd       # parameterized: build a submission CSV\n│   └── setup-kaggle.md      # Kaggle CLI auth guide\n├── models/                  # fitted workflows (*_fit.rds), tuning (*_res.rds), submission_*.csv\n└── figures/                 # exported plots\nThe two shared pieces are R/03_engineer.R (deterministic up-front engineering) and R/02_features.R (make_recipe()). Every model sources the recipe so they all train on the same engineered features — that is what makes the comparison fair."
+  },
+  {
+    "objectID": "index.html#how-to-reproduce",
+    "href": "index.html#how-to-reproduce",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "How to reproduce",
+    "text": "How to reproduce\nEverything is pinned with renv and uses here::here() for paths, so there is no setwd() fragility.\n\nRestore the environment:\nrenv::restore()\nGet the data — the CSVs ship in data/raw/; or follow the Kaggle setup guide to pull the official files.\nRender the site. Because of freeze: auto, the heavy model fits only run the first time (or when a model doc changes):\nquarto render\nLogical run order: EDA → each base model doc (each saves its tuning result and fitted workflow to models/) → stack → submission.\n\n\n\n\n\n\n\nNote\n\n\n\nset.seed(42) is set in R/00_setup.R and the resampling folds are seeded, so CV results are reproducible across machines that share the renv lockfile."
+  },
+  {
+    "objectID": "index.html#results-summary",
+    "href": "index.html#results-summary",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "Results summary",
+    "text": "Results summary\nThe table below compares the six base models on cross-validated rmse and rsq, read directly from each model’s saved tuning results (models/*_res.rds), so they update automatically on every render. No copying. The rmse is on the log(SalePrice) scale — the same units as the Kaggle leaderboard.\n\n\nShow code\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\n\n# Pull the best (rmse-selected) configuration's CV metrics from a saved\n# tune_grid result.\ncv_metrics &lt;- function(path, label, notes) {\n  res  &lt;- readRDS(path)\n  best &lt;- select_best(res, metric = \"rmse\")\n  m    &lt;- collect_metrics(res) |&gt; semi_join(best, by = names(best))\n  tibble(\n    Model           = label,\n    `CV RMSE (log)` = m$mean[m$.metric == \"rmse\"],\n    `CV R-squared`  = m$mean[m$.metric == \"rsq\"],\n    `Best num_comp` = best$num_comp,\n    Notes           = notes\n  )\n}\n\nbind_rows(\n  cv_metrics(here(\"models\", \"xgboost_res.rds\"), \"XGBoost\",\n             \"tuned trees / tree_depth / learn_rate / min_n + num_comp\"),\n  cv_metrics(here(\"models\", \"rf_res.rds\"), \"Random Forest\",\n             \"tuned mtry / min_n + num_comp; 1000 trees\"),\n  cv_metrics(here(\"models\", \"nnet_res.rds\"), \"Neural Net\",\n             \"tuned hidden_units / penalty + num_comp; PCA-normalized\"),\n  cv_metrics(here(\"models\", \"elasticnet_res.rds\"), \"Elastic Net\",\n             \"glmnet: tuned penalty / mixture + num_comp\"),\n  cv_metrics(here(\"models\", \"svm_res.rds\"), \"SVM (RBF)\",\n             \"kernlab: tuned cost / rbf_sigma + num_comp\"),\n  cv_metrics(here(\"models\", \"mars_res.rds\"), \"MARS\",\n             \"earth: tuned num_terms / prod_degree + num_comp\")\n) |&gt;\n  arrange(`CV RMSE (log)`) |&gt;\n  mutate(across(c(`CV RMSE (log)`, `CV R-squared`), \\(x) round(x, 4))) |&gt;\n  knitr::kable(align = \"lrrrl\")\n\n\n\n\n\n\n\n\n\n\n\n\nModel\nCV RMSE (log)\nCV R-squared\nBest num_comp\nNotes\n\n\n\n\nSVM (RBF)\n0.1213\n0.9074\n9\nkernlab: tuned cost / rbf_sigma + num_comp\n\n\nXGBoost\n0.1248\n0.9021\n15\ntuned trees / tree_depth / learn_rate / min_n + num_comp\n\n\nElastic Net\n0.1266\n0.8974\n4\nglmnet: tuned penalty / mixture + num_comp\n\n\nRandom Forest\n0.1268\n0.8998\n12\ntuned mtry / min_n + num_comp; 1000 trees\n\n\nMARS\n0.1317\n0.8862\n2\nearth: tuned num_terms / prod_degree + num_comp\n\n\nNeural Net\n0.2043\n0.7545\n7\ntuned hidden_units / penalty + num_comp; PCA-normalized\n\n\n\n\n\nThe stacked ensemble blends all six; its real test is the Kaggle leaderboard rather than a single CV number."
+  },
+  {
+    "objectID": "index.html#the-submission-workflow-at-a-glance",
+    "href": "index.html#the-submission-workflow-at-a-glance",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "The submission workflow at a glance",
+    "text": "The submission workflow at a glance\nOnce a model is fitted and saved (each model doc does this), turning it into a leaderboard entry is mechanical and wrapped in the parameterized submission document:\nquarto render docs/submission.qmd -P model:xgboost\nquarto render docs/submission.qmd -P model:stack\nThat loads models/&lt;model&gt;_fit.rds, predicts on the test set, exponentiates the log predictions back to dollars, writes models/submission_&lt;model&gt;.csv (Id, SalePrice), and prints the exact kaggle competitions submit command."
+  },
+  {
+    "objectID": "index.html#next-steps",
+    "href": "index.html#next-steps",
+    "title": "House Prices — Tidymodels Tour",
+    "section": "Next steps",
+    "text": "Next steps\n\nStart with the Exploratory Data Analysis.\nThen read the model docs, beginning with XGBoost.\nBuild a leaderboard CSV with the Submission doc.\nStuck on authentication? See the Kaggle Setup guide."
+  },
+  {
+    "objectID": "docs/submission.html",
+    "href": "docs/submission.html",
+    "title": "Building a Kaggle Submission",
+    "section": "",
+    "text": "Where we are: The final stop on the House Prices — Tidymodels Tour. Each model document fits a workflow and saves it to models/&lt;model&gt;_fit.rds. This document is parameterized: tell it which model, and it loads that fit, predicts on the test set, exponentiates predictions back to dollars, and writes a Kaggle-ready CSV."
+  },
+  {
+    "objectID": "docs/submission.html#how-to-render-this-document-per-model",
+    "href": "docs/submission.html#how-to-render-this-document-per-model",
+    "title": "Building a Kaggle Submission",
+    "section": "How to render this document per model",
+    "text": "How to render this document per model\nThis .qmd has a model parameter (default \"xgboost\"). Override it on the command line with -P model:&lt;value&gt;:\nquarto render docs/submission.qmd -P model:xgboost\nquarto render docs/submission.qmd -P model:rf\nquarto render docs/submission.qmd -P model:nnet\nquarto render docs/submission.qmd -P model:elasticnet\nquarto render docs/submission.qmd -P model:svm\nquarto render docs/submission.qmd -P model:mars\nquarto render docs/submission.qmd -P model:stack\nEach render reads the matching models/&lt;model&gt;_fit.rds, writes models/submission_&lt;model&gt;.csv, and prints the exact upload command. You must have fitted (rendered) the corresponding model document first so the .rds exists."
+  },
+  {
+    "objectID": "docs/submission.html#setup",
+    "href": "docs/submission.html#setup",
+    "title": "Building a Kaggle Submission",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)"
+  },
+  {
+    "objectID": "docs/submission.html#resolve-and-validate-the-requested-model",
+    "href": "docs/submission.html#resolve-and-validate-the-requested-model",
+    "title": "Building a Kaggle Submission",
+    "section": "Resolve and validate the requested model",
+    "text": "Resolve and validate the requested model\n\n\nShow code\nrequested_model &lt;- params$model\n\n# This single lookup table is the source of truth for which models are submittable.\nmodel_paths &lt;- c(\n  xgboost    = here::here(\"models\", \"xgboost_fit.rds\"),\n  rf         = here::here(\"models\", \"rf_fit.rds\"),\n  nnet       = here::here(\"models\", \"nnet_fit.rds\"),\n  elasticnet = here::here(\"models\", \"elasticnet_fit.rds\"),\n  svm        = here::here(\"models\", \"svm_fit.rds\"),\n  mars       = here::here(\"models\", \"mars_fit.rds\"),\n  stack      = here::here(\"models\", \"stack_fit.rds\")\n)\n\nif (!requested_model %in% names(model_paths)) {\n  stop(\n    \"Unknown model '\", requested_model, \"'. \",\n    \"Choose one of: \", paste(names(model_paths), collapse = \", \"), \". \",\n    \"Example: quarto render docs/submission.qmd -P model:rf\",\n    call. = FALSE\n  )\n}\n\nfit_path &lt;- model_paths[[requested_model]]\n\nif (!file.exists(fit_path)) {\n  stop(\n    \"Fitted model not found at '\", fit_path, \"'. \",\n    \"Render the matching model document first (e.g. quarto render \",\n    \"docs/02-xgboost.qmd) so the .rds is saved.\",\n    call. = FALSE\n  )\n}\n\nmessage(\"Building submission for model: \", requested_model)\n\n\nBuilding submission for model: xgboost\n\n\nShow code\nmessage(\"Loading fitted workflow from: \", fit_path)\n\n\nLoading fitted workflow from: /home/runner/work/house-prices/house-prices/models/xgboost_fit.rds\n\n\nWe are building a submission for xgboost."
+  },
+  {
+    "objectID": "docs/submission.html#load-the-model-and-the-test-data",
+    "href": "docs/submission.html#load-the-model-and-the-test-data",
+    "title": "Building a Kaggle Submission",
+    "section": "Load the model and the test data",
+    "text": "Load the model and the test data\n\n\nShow code\nmodel_fit &lt;- readRDS(fit_path)\n\n# Use the PROCESSED test set (engineered features added in R/03_engineer.R), so\n# the columns match what every model/recipe expects. Id keys the submission.\ntest &lt;- read_csv(here(\"data\", \"processed\", \"test.csv\"), show_col_types = FALSE)\n\nglimpse(test)\n\n\nRows: 1,459\nColumns: 93\n$ Id            &lt;dbl&gt; 1461, 1462, 1463, 1464, 1465, 1466, 1467, 1468, 1469, 14…\n$ MSSubClass    &lt;dbl&gt; 20, 20, 60, 60, 120, 60, 20, 60, 20, 20, 120, 160, 160, …\n$ MSZoning      &lt;chr&gt; \"RH\", \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"R…\n$ LotFrontage   &lt;dbl&gt; 80, 81, 74, 78, 43, 75, NA, 63, 85, 70, 26, 21, 21, 24, …\n$ LotArea       &lt;dbl&gt; 11622, 14267, 13830, 9978, 5005, 10000, 7980, 8402, 1017…\n$ Street        &lt;chr&gt; \"Pave\", \"Pave\", \"Pave\", \"Pave\", \"Pave\", \"Pave\", \"Pave\", …\n$ Alley         &lt;chr&gt; \"None\", \"None\", \"None\", \"None\", \"None\", \"None\", \"None\", …\n$ LotShape      &lt;chr&gt; \"Reg\", \"IR1\", \"IR1\", \"IR1\", \"IR1\", \"IR1\", \"IR1\", \"IR1\", …\n$ LandContour   &lt;chr&gt; \"Lvl\", \"Lvl\", \"Lvl\", \"Lvl\", \"HLS\", \"Lvl\", \"Lvl\", \"Lvl\", …\n$ Utilities     &lt;chr&gt; \"AllPub\", \"AllPub\", \"AllPub\", \"AllPub\", \"AllPub\", \"AllPu…\n$ LotConfig     &lt;chr&gt; \"Inside\", \"Corner\", \"Inside\", \"Inside\", \"Inside\", \"Corne…\n$ LandSlope     &lt;chr&gt; \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", …\n$ Neighborhood  &lt;chr&gt; \"NAmes\", \"NAmes\", \"Gilbert\", \"Gilbert\", \"StoneBr\", \"Gilb…\n$ Condition1    &lt;chr&gt; \"Feedr\", \"Norm\", \"Norm\", \"Norm\", \"Norm\", \"Norm\", \"Norm\",…\n$ Condition2    &lt;chr&gt; \"Norm\", \"Norm\", \"Norm\", \"Norm\", \"Norm\", \"Norm\", \"Norm\", …\n$ BldgType      &lt;chr&gt; \"1Fam\", \"1Fam\", \"1Fam\", \"1Fam\", \"TwnhsE\", \"1Fam\", \"1Fam\"…\n$ HouseStyle    &lt;chr&gt; \"1Story\", \"1Story\", \"2Story\", \"2Story\", \"1Story\", \"2Stor…\n$ OverallQual   &lt;dbl&gt; 5, 6, 5, 6, 8, 6, 6, 6, 7, 4, 7, 6, 5, 6, 7, 9, 8, 9, 8,…\n$ OverallCond   &lt;dbl&gt; 6, 6, 5, 6, 5, 5, 7, 5, 5, 5, 5, 5, 5, 6, 6, 5, 5, 5, 5,…\n$ YearBuilt     &lt;dbl&gt; 1961, 1958, 1997, 1998, 1992, 1993, 1992, 1998, 1990, 19…\n$ YearRemodAdd  &lt;dbl&gt; 1961, 1958, 1998, 1998, 1992, 1994, 2007, 1998, 1990, 19…\n$ RoofStyle     &lt;chr&gt; \"Gable\", \"Hip\", \"Gable\", \"Gable\", \"Gable\", \"Gable\", \"Gab…\n$ RoofMatl      &lt;chr&gt; \"CompShg\", \"CompShg\", \"CompShg\", \"CompShg\", \"CompShg\", \"…\n$ Exterior1st   &lt;chr&gt; \"VinylSd\", \"Wd Sdng\", \"VinylSd\", \"VinylSd\", \"HdBoard\", \"…\n$ Exterior2nd   &lt;chr&gt; \"VinylSd\", \"Wd Sdng\", \"VinylSd\", \"VinylSd\", \"HdBoard\", \"…\n$ MasVnrType    &lt;chr&gt; \"None\", \"BrkFace\", \"None\", \"BrkFace\", \"None\", \"None\", \"N…\n$ MasVnrArea    &lt;dbl&gt; 0, 108, 0, 20, 0, 0, 0, 0, 0, 0, 0, 504, 492, 0, 0, 162,…\n$ ExterQual     &lt;chr&gt; \"TA\", \"TA\", \"TA\", \"TA\", \"Gd\", \"TA\", \"TA\", \"TA\", \"TA\", \"T…\n$ ExterCond     &lt;chr&gt; \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"Gd\", \"TA\", \"TA\", \"T…\n$ Foundation    &lt;chr&gt; \"CBlock\", \"CBlock\", \"PConc\", \"PConc\", \"PConc\", \"PConc\", …\n$ BsmtQual      &lt;chr&gt; \"TA\", \"TA\", \"Gd\", \"TA\", \"Gd\", \"Gd\", \"Gd\", \"Gd\", \"Gd\", \"T…\n$ BsmtCond      &lt;chr&gt; \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"T…\n$ BsmtExposure  &lt;chr&gt; \"No\", \"No\", \"No\", \"No\", \"No\", \"No\", \"No\", \"No\", \"Gd\", \"N…\n$ BsmtFinType1  &lt;chr&gt; \"Rec\", \"ALQ\", \"GLQ\", \"GLQ\", \"ALQ\", \"Unf\", \"ALQ\", \"Unf\", …\n$ BsmtFinSF1    &lt;dbl&gt; 468, 923, 791, 602, 263, 0, 935, 0, 637, 804, 1051, 156,…\n$ BsmtFinType2  &lt;chr&gt; \"LwQ\", \"Unf\", \"Unf\", \"Unf\", \"Unf\", \"Unf\", \"Unf\", \"Unf\", …\n$ BsmtFinSF2    &lt;dbl&gt; 144, 0, 0, 0, 0, 0, 0, 0, 0, 78, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ BsmtUnfSF     &lt;dbl&gt; 270, 406, 137, 324, 1017, 763, 233, 789, 663, 0, 354, 32…\n$ TotalBsmtSF   &lt;dbl&gt; 882, 1329, 928, 926, 1280, 763, 1168, 789, 1300, 882, 14…\n$ Heating       &lt;chr&gt; \"GasA\", \"GasA\", \"GasA\", \"GasA\", \"GasA\", \"GasA\", \"GasA\", …\n$ HeatingQC     &lt;chr&gt; \"TA\", \"TA\", \"Gd\", \"Ex\", \"Ex\", \"Gd\", \"Ex\", \"Gd\", \"Gd\", \"T…\n$ CentralAir    &lt;chr&gt; \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"…\n$ Electrical    &lt;chr&gt; \"SBrkr\", \"SBrkr\", \"SBrkr\", \"SBrkr\", \"SBrkr\", \"SBrkr\", \"S…\n$ `1stFlrSF`    &lt;dbl&gt; 896, 1329, 928, 926, 1280, 763, 1187, 789, 1341, 882, 13…\n$ `2ndFlrSF`    &lt;dbl&gt; 0, 0, 701, 678, 0, 892, 0, 676, 0, 0, 0, 504, 567, 601, …\n$ LowQualFinSF  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ GrLivArea     &lt;dbl&gt; 896, 1329, 1629, 1604, 1280, 1655, 1187, 1465, 1341, 882…\n$ BsmtFullBath  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ BsmtHalfBath  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ FullBath      &lt;dbl&gt; 1, 1, 2, 2, 2, 2, 2, 2, 1, 1, 2, 1, 1, 2, 1, 2, 2, 2, 2,…\n$ HalfBath      &lt;dbl&gt; 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0,…\n$ BedroomAbvGr  &lt;dbl&gt; 2, 3, 3, 3, 2, 3, 3, 3, 2, 2, 2, 2, 3, 3, 2, 3, 3, 3, 3,…\n$ KitchenAbvGr  &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,…\n$ KitchenQual   &lt;chr&gt; \"TA\", \"Gd\", \"TA\", \"Gd\", \"Gd\", \"TA\", \"TA\", \"TA\", \"Gd\", \"T…\n$ TotRmsAbvGrd  &lt;dbl&gt; 5, 6, 6, 7, 5, 7, 6, 7, 5, 4, 5, 5, 6, 6, 4, 10, 7, 7, 8…\n$ Functional    &lt;chr&gt; \"Typ\", \"Typ\", \"Typ\", \"Typ\", \"Typ\", \"Typ\", \"Typ\", \"Typ\", …\n$ Fireplaces    &lt;dbl&gt; 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1,…\n$ FireplaceQu   &lt;chr&gt; \"None\", \"None\", \"TA\", \"Gd\", \"None\", \"TA\", \"None\", \"Gd\", …\n$ GarageType    &lt;chr&gt; \"Attchd\", \"Attchd\", \"Attchd\", \"Attchd\", \"Attchd\", \"Attch…\n$ GarageYrBlt   &lt;dbl&gt; 1961, 1958, 1997, 1998, 1992, 1993, 1992, 1998, 1990, 19…\n$ GarageFinish  &lt;chr&gt; \"Unf\", \"Unf\", \"Fin\", \"Fin\", \"RFn\", \"Fin\", \"Fin\", \"Fin\", …\n$ GarageCars    &lt;dbl&gt; 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 1, 3, 3, 3, 3,…\n$ GarageArea    &lt;dbl&gt; 730, 312, 482, 470, 506, 440, 420, 393, 506, 525, 511, 2…\n$ GarageQual    &lt;chr&gt; \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"T…\n$ GarageCond    &lt;chr&gt; \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"TA\", \"T…\n$ PavedDrive    &lt;chr&gt; \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"Y\", \"…\n$ WoodDeckSF    &lt;dbl&gt; 140, 393, 212, 360, 0, 157, 483, 0, 192, 240, 203, 275, …\n$ OpenPorchSF   &lt;dbl&gt; 0, 36, 34, 36, 82, 84, 21, 75, 0, 0, 68, 0, 0, 0, 30, 13…\n$ EnclosedPorch &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ `3SsnPorch`   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ ScreenPorch   &lt;dbl&gt; 120, 0, 0, 0, 144, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0…\n$ PoolArea      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ PoolQC        &lt;chr&gt; \"None\", \"None\", \"None\", \"None\", \"None\", \"None\", \"None\", …\n$ Fence         &lt;chr&gt; \"MnPrv\", \"None\", \"MnPrv\", \"None\", \"None\", \"None\", \"GdPrv…\n$ MiscFeature   &lt;chr&gt; \"None\", \"Gar2\", \"None\", \"None\", \"None\", \"None\", \"Shed\", …\n$ MiscVal       &lt;dbl&gt; 0, 12500, 0, 0, 0, 0, 500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,…\n$ MoSold        &lt;dbl&gt; 6, 6, 3, 6, 1, 4, 3, 5, 2, 4, 6, 2, 3, 6, 6, 1, 6, 6, 2,…\n$ YrSold        &lt;dbl&gt; 2010, 2010, 2010, 2010, 2010, 2010, 2010, 2010, 2010, 20…\n$ SaleType      &lt;chr&gt; \"WD\", \"WD\", \"WD\", \"WD\", \"WD\", \"WD\", \"WD\", \"WD\", \"WD\", \"W…\n$ SaleCondition &lt;chr&gt; \"Normal\", \"Normal\", \"Normal\", \"Normal\", \"Normal\", \"Norma…\n$ TotalSF       &lt;dbl&gt; 1778, 2658, 2557, 2530, 2560, 2418, 2355, 2254, 2641, 17…\n$ TotalBath     &lt;dbl&gt; 1.0, 1.5, 2.5, 2.5, 2.0, 2.5, 3.0, 2.5, 2.5, 2.0, 3.0, 1…\n$ TotalPorchSF  &lt;dbl&gt; 260, 429, 246, 396, 226, 241, 504, 75, 192, 240, 271, 27…\n$ HouseAge      &lt;dbl&gt; 49, 52, 13, 12, 18, 17, 18, 12, 20, 40, 11, 39, 39, 35, …\n$ RemodAge      &lt;dbl&gt; 49, 52, 12, 12, 18, 16, 3, 12, 20, 40, 11, 39, 39, 35, 3…\n$ IsNew         &lt;chr&gt; \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"n…\n$ IsRemodeled   &lt;chr&gt; \"no\", \"no\", \"yes\", \"no\", \"no\", \"yes\", \"yes\", \"no\", \"no\",…\n$ Has2ndFloor   &lt;chr&gt; \"no\", \"no\", \"yes\", \"yes\", \"no\", \"yes\", \"no\", \"yes\", \"no\"…\n$ HasBsmt       &lt;chr&gt; \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", …\n$ HasGarage     &lt;chr&gt; \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", \"yes\", …\n$ HasPool       &lt;chr&gt; \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"no\", \"n…\n$ HasFireplace  &lt;chr&gt; \"no\", \"no\", \"yes\", \"yes\", \"no\", \"yes\", \"no\", \"yes\", \"yes…\n$ OverallScore  &lt;dbl&gt; 30, 36, 25, 36, 40, 30, 42, 30, 35, 20, 35, 30, 25, 36, …"
+  },
+  {
+    "objectID": "docs/submission.html#predict-and-assemble-the-submission",
+    "href": "docs/submission.html#predict-and-assemble-the-submission",
+    "title": "Building a Kaggle Submission",
+    "section": "Predict and assemble the submission",
+    "text": "Predict and assemble the submission\n\n\nShow code\n# Every model was trained on log(SalePrice), so predictions are on the log\n# scale. predict() runs the workflow's recipe on the test data, then the model.\npreds &lt;- predict(model_fit, new_data = test)\n\n# Kaggle requires EXACTLY two columns: Id and SalePrice (in dollars). We\n# exponentiate the log-scale prediction back to dollars.\nsubmission &lt;- tibble(\n  Id        = test$Id,\n  SalePrice = exp(preds$.pred)\n)\n\n# Sanity checks: right number of rows, positive prices, no missing predictions.\nstopifnot(\n  nrow(submission) == nrow(test),\n  all(submission$SalePrice &gt; 0),\n  !anyNA(submission$SalePrice)\n)\n\nhead(submission, 10)"
+  },
+  {
+    "objectID": "docs/submission.html#write-the-csv",
+    "href": "docs/submission.html#write-the-csv",
+    "title": "Building a Kaggle Submission",
+    "section": "Write the CSV",
+    "text": "Write the CSV\n\n\nShow code\nout_path &lt;- here(\"models\", paste0(\"submission_\", requested_model, \".csv\"))\nwrite_csv(submission, out_path)\nmessage(\"Wrote \", nrow(submission), \" predictions to: \", out_path)\n\n\nWrote 1459 predictions to: /home/runner/work/house-prices/house-prices/models/submission_xgboost.csv\n\n\nA quick summary of the predicted prices (sanity check against the ~$34k–$755k range seen in the EDA):\n\n\nShow code\nsummary(submission$SalePrice)\n\n\n   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. \n  44361  128011  156406  177991  209897  559945"
+  },
+  {
+    "objectID": "docs/submission.html#submit-to-kaggle",
+    "href": "docs/submission.html#submit-to-kaggle",
+    "title": "Building a Kaggle Submission",
+    "section": "Submit to Kaggle",
+    "text": "Submit to Kaggle\nkaggle competitions submit -c home-data-for-ml-course -f models/submission_xgboost.csv -m \"xgboost via tidymodels\"\n\n\n\n\n\n\nNoteFirst time? Authenticate first\n\n\n\nThe kaggle CLI needs your API token (~/.kaggle/kaggle.json) before any submit or download will work. The Kaggle setup guide walks through creating and installing it.\n\n\n\n\n\n\n\n\nTipThe leaderboard metric\n\n\n\nThis competition is scored on RMSE between the log of the predicted and the log of the observed SalePrice. Because we train on log(SalePrice), each model’s CV rmse (on the master results table) is already in the same units as the leaderboard — a rare, satisfying alignment."
+  },
+  {
+    "objectID": "docs/submission.html#next-steps",
+    "href": "docs/submission.html#next-steps",
+    "title": "Building a Kaggle Submission",
+    "section": "Next steps",
+    "text": "Next steps\n\nCompare each model’s leaderboard score against its CV score recorded in the master results table — divergence is a lesson in generalization.\nRe-render for the other models with -P model:&lt;name&gt;.\nNeed auth help? See the Kaggle setup guide."
+  },
+  {
+    "objectID": "docs/08-mars.html",
+    "href": "docs/08-mars.html",
+    "title": "Model 6 — MARS",
+    "section": "",
+    "text": "Where we are: Last of six base model documents in the House Prices — Tidymodels Tour. Same structure as the others; we model log(SalePrice) and score on RMSE."
+  },
+  {
+    "objectID": "docs/08-mars.html#why-mars",
+    "href": "docs/08-mars.html#why-mars",
+    "title": "Model 6 — MARS",
+    "section": "Why MARS?",
+    "text": "Why MARS?\nMARS fits the response as a sum of hinge functions — piecewise-linear splines with automatically chosen knots — and can multiply them for interactions. That makes it naturally suited to housing data, where a feature’s effect often changes slope at a threshold (e.g. living area matters more up to a point). It is nonlinear yet interpretable, and diverse from the trees. We tune the number of retained terms and the interaction degree."
+  },
+  {
+    "objectID": "docs/08-mars.html#setup",
+    "href": "docs/08-mars.html#setup",
+    "title": "Model 6 — MARS",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\nsource(here(\"R\", \"02_features.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(vip)\nlibrary(earth)   # the engine\n\n\n\n\nShow code\ntrain &lt;- readr::read_csv(here(\"data\", \"processed\", \"train.csv\"),\n                         show_col_types = FALSE) |&gt;\n  mutate(SalePrice = log(SalePrice))"
+  },
+  {
+    "objectID": "docs/08-mars.html#recipe-spec-workflow",
+    "href": "docs/08-mars.html#recipe-spec-workflow",
+    "title": "Model 6 — MARS",
+    "section": "Recipe, spec, workflow",
+    "text": "Recipe, spec, workflow\n\n\nShow code\nmars_recipe &lt;- make_recipe(train)\n\nmars_spec &lt;- mars(\n  num_terms   = tune(),\n  prod_degree = tune()\n) |&gt;\n  set_engine(\"earth\") |&gt;\n  set_mode(\"regression\")\n\nmars_wf &lt;- workflow() |&gt;\n  add_recipe(mars_recipe) |&gt;\n  add_model(mars_spec)"
+  },
+  {
+    "objectID": "docs/08-mars.html#tuning-with-10-fold-cross-validation",
+    "href": "docs/08-mars.html#tuning-with-10-fold-cross-validation",
+    "title": "Model 6 — MARS",
+    "section": "Tuning with 10-fold cross-validation",
+    "text": "Tuning with 10-fold cross-validation\n\n\nShow code\nset.seed(42)\nfolds &lt;- vfold_cv(train, v = 10, strata = SalePrice)\n\n\n\n\nShow code\npreds &lt;- prep(make_recipe(train, num_comp = 2)) |&gt;\n  bake(new_data = NULL) |&gt;\n  select(-SalePrice, -Id)\n\nmars_params &lt;- extract_parameter_set_dials(mars_wf) |&gt;\n  finalize(preds) |&gt;\n  update(\n    num_terms = num_terms(range = c(5L, 50L)),\n    num_comp  = num_comp(range = c(2L, 15L))\n  )\n\nset.seed(42)\nmars_grid &lt;- grid_space_filling(mars_params, size = 20)\n\n\n\n\nShow code\nmars_metrics &lt;- metric_set(rmse, rsq)\n\nset.seed(42)\nmars_tuned &lt;- tune_grid(\n  mars_wf,\n  resamples = folds,\n  grid      = mars_grid,\n  metrics   = mars_metrics,\n  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)\n)\n\nsaveRDS(mars_tuned, here(\"models\", \"mars_res.rds\"))\n\n\n\nTuning results\n\n\nShow code\nautoplot(mars_tuned, metric = \"rmse\")\n\n\n\n\n\nRMSE across the tuning grid (autoplot).\n\n\n\n\n\n\nShow code\nshow_best(mars_tuned, metric = \"rmse\", n = 5)"
+  },
+  {
+    "objectID": "docs/08-mars.html#finalize-and-fit",
+    "href": "docs/08-mars.html#finalize-and-fit",
+    "title": "Model 6 — MARS",
+    "section": "Finalize and fit",
+    "text": "Finalize and fit\n\n\nShow code\nbest_mars &lt;- select_best(mars_tuned, metric = \"rmse\")\nbest_mars\n\n\n\n  \n\n\n\nShow code\nfinal_mars_wf &lt;- finalize_workflow(mars_wf, best_mars)\n\nset.seed(42)\nmars_fit &lt;- fit(final_mars_wf, data = train)"
+  },
+  {
+    "objectID": "docs/08-mars.html#cross-validated-performance",
+    "href": "docs/08-mars.html#cross-validated-performance",
+    "title": "Model 6 — MARS",
+    "section": "Cross-validated performance",
+    "text": "Cross-validated performance\n\n\nShow code\ncollect_metrics(mars_tuned) |&gt;\n  semi_join(best_mars, by = names(best_mars)) |&gt;\n  select(.metric, mean, std_err, n)\n\n\n\n  \n\n\n\n\nObserved vs predicted (out-of-fold)\n\n\nShow code\ncollect_predictions(mars_tuned) |&gt;\n  filter(.config == best_mars$.config) |&gt;\n  ggplot(aes(x = SalePrice, y = .pred)) +\n  geom_abline(slope = 1, intercept = 0, colour = \"grey50\", linetype = 2) +\n  geom_point(alpha = 0.35, colour = house_pal[6]) +\n  labs(title = \"MARS — CV predicted vs observed\",\n       x = \"Observed log(SalePrice)\", y = \"Predicted log(SalePrice)\") +\n  coord_equal()\n\n\n\n\n\nOut-of-fold predicted vs observed log(SalePrice).\n\n\n\n\n\n\nVariable importance\n\n\nShow code\nmars_fit |&gt;\n  extract_fit_parsnip() |&gt;\n  vip(num_features = 15, geom = \"col\",\n      aesthetics = list(fill = house_pal[6])) +\n  labs(title = \"MARS variable importance\") +\n  theme_minimal()\n\n\n\n\n\nFeatures retained in the MARS model, by importance."
+  },
+  {
+    "objectID": "docs/08-mars.html#save-the-fitted-workflow",
+    "href": "docs/08-mars.html#save-the-fitted-workflow",
+    "title": "Model 6 — MARS",
+    "section": "Save the fitted workflow",
+    "text": "Save the fitted workflow\n\n\nShow code\nsaveRDS(mars_fit, file = here(\"models\", \"mars_fit.rds\"))"
+  },
+  {
+    "objectID": "docs/08-mars.html#submission",
+    "href": "docs/08-mars.html#submission",
+    "title": "Model 6 — MARS",
+    "section": "Submission",
+    "text": "Submission\nquarto render docs/submission.qmd -P model:mars"
+  },
+  {
+    "objectID": "docs/08-mars.html#next-steps",
+    "href": "docs/08-mars.html#next-steps",
+    "title": "Model 6 — MARS",
+    "section": "Next steps",
+    "text": "Next steps\n\nBlend all six base models in the Stacked Ensemble.\nBack to the master results table."
+  },
+  {
+    "objectID": "docs/06-elasticnet.html",
+    "href": "docs/06-elasticnet.html",
+    "title": "Model 4 — Elastic Net",
+    "section": "",
+    "text": "Where we are: Fourth of six model documents in the House Prices — Tidymodels Tour. Same structure as the others; we model log(SalePrice) and score on RMSE."
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#why-elastic-net",
+    "href": "docs/06-elasticnet.html#why-elastic-net",
+    "title": "Model 4 — Elastic Net",
+    "section": "Why elastic net?",
+    "text": "Why elastic net?\nA regularised linear model is the classic, interpretable regression baseline — and on the log scale, with the Yeo-Johnson-transformed features from the recipe, it is genuinely competitive on Ames. glmnet blends ridge (L2) and lasso (L1) penalties: penalty sets the total shrinkage and mixture the L1/L2 balance (1 = pure lasso, 0 = pure ridge). Lasso also does automatic feature selection, which is handy given ~200 dummy columns."
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#setup",
+    "href": "docs/06-elasticnet.html#setup",
+    "title": "Model 4 — Elastic Net",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\nsource(here(\"R\", \"02_features.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(vip)\nlibrary(glmnet)   # the engine\n\n\n\n\nShow code\ntrain &lt;- readr::read_csv(here(\"data\", \"processed\", \"train.csv\"),\n                         show_col_types = FALSE) |&gt;\n  mutate(SalePrice = log(SalePrice))"
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#recipe-spec-workflow",
+    "href": "docs/06-elasticnet.html#recipe-spec-workflow",
+    "title": "Model 4 — Elastic Net",
+    "section": "Recipe, spec, workflow",
+    "text": "Recipe, spec, workflow\n\n\nShow code\nen_recipe &lt;- make_recipe(train)\n\nen_spec &lt;- linear_reg(\n  penalty = tune(),\n  mixture = tune()\n) |&gt;\n  set_engine(\"glmnet\") |&gt;\n  set_mode(\"regression\")\n\nen_wf &lt;- workflow() |&gt;\n  add_recipe(en_recipe) |&gt;\n  add_model(en_spec)"
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#tuning-with-10-fold-cross-validation",
+    "href": "docs/06-elasticnet.html#tuning-with-10-fold-cross-validation",
+    "title": "Model 4 — Elastic Net",
+    "section": "Tuning with 10-fold cross-validation",
+    "text": "Tuning with 10-fold cross-validation\n\n\nShow code\nset.seed(42)\nfolds &lt;- vfold_cv(train, v = 10, strata = SalePrice)\n\n\n\n\nShow code\npreds &lt;- prep(make_recipe(train, num_comp = 2)) |&gt;\n  bake(new_data = NULL) |&gt;\n  select(-SalePrice, -Id)\n\nen_params &lt;- extract_parameter_set_dials(en_wf) |&gt;\n  finalize(preds) |&gt;\n  update(num_comp = num_comp(range = c(2L, 15L)))\n\nset.seed(42)\nen_grid &lt;- grid_space_filling(en_params, size = 20)\n\n\n\n\nShow code\nen_metrics &lt;- metric_set(rmse, rsq)\n\nset.seed(42)\nen_tuned &lt;- tune_grid(\n  en_wf,\n  resamples = folds,\n  grid      = en_grid,\n  metrics   = en_metrics,\n  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)\n)\n\nsaveRDS(en_tuned, here(\"models\", \"elasticnet_res.rds\"))\n\n\n\nTuning results\n\n\nShow code\nautoplot(en_tuned, metric = \"rmse\")\n\n\n\n\n\nRMSE across the tuning grid (autoplot).\n\n\n\n\n\n\nShow code\nshow_best(en_tuned, metric = \"rmse\", n = 5)"
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#finalize-and-fit",
+    "href": "docs/06-elasticnet.html#finalize-and-fit",
+    "title": "Model 4 — Elastic Net",
+    "section": "Finalize and fit",
+    "text": "Finalize and fit\n\n\nShow code\nbest_en &lt;- select_best(en_tuned, metric = \"rmse\")\nbest_en\n\n\n\n  \n\n\n\nShow code\nfinal_en_wf &lt;- finalize_workflow(en_wf, best_en)\n\nset.seed(42)\nen_fit &lt;- fit(final_en_wf, data = train)"
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#cross-validated-performance",
+    "href": "docs/06-elasticnet.html#cross-validated-performance",
+    "title": "Model 4 — Elastic Net",
+    "section": "Cross-validated performance",
+    "text": "Cross-validated performance\n\n\nShow code\ncollect_metrics(en_tuned) |&gt;\n  semi_join(best_en, by = names(best_en)) |&gt;\n  select(.metric, mean, std_err, n)\n\n\n\n  \n\n\n\n\nObserved vs predicted (out-of-fold)\n\n\nShow code\ncollect_predictions(en_tuned) |&gt;\n  filter(.config == best_en$.config) |&gt;\n  ggplot(aes(x = SalePrice, y = .pred)) +\n  geom_abline(slope = 1, intercept = 0, colour = \"grey50\", linetype = 2) +\n  geom_point(alpha = 0.35, colour = house_pal[4]) +\n  labs(title = \"Elastic Net — CV predicted vs observed\",\n       x = \"Observed log(SalePrice)\", y = \"Predicted log(SalePrice)\") +\n  coord_equal()\n\n\n\n\n\nOut-of-fold predicted vs observed log(SalePrice).\n\n\n\n\n\n\nVariable importance\n\n\nShow code\nen_fit |&gt;\n  extract_fit_parsnip() |&gt;\n  vip(num_features = 15, geom = \"col\",\n      aesthetics = list(fill = house_pal[4])) +\n  labs(title = \"Elastic net — top coefficients\") +\n  theme_minimal()\n\n\n\n\n\nLargest standardised coefficients at the tuned penalty."
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#save-the-fitted-workflow",
+    "href": "docs/06-elasticnet.html#save-the-fitted-workflow",
+    "title": "Model 4 — Elastic Net",
+    "section": "Save the fitted workflow",
+    "text": "Save the fitted workflow\n\n\nShow code\nsaveRDS(en_fit, file = here(\"models\", \"elasticnet_fit.rds\"))"
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#submission",
+    "href": "docs/06-elasticnet.html#submission",
+    "title": "Model 4 — Elastic Net",
+    "section": "Submission",
+    "text": "Submission\nquarto render docs/submission.qmd -P model:elasticnet"
+  },
+  {
+    "objectID": "docs/06-elasticnet.html#next-steps",
+    "href": "docs/06-elasticnet.html#next-steps",
+    "title": "Model 4 — Elastic Net",
+    "section": "Next steps",
+    "text": "Next steps\n\nContinue to the SVM and MARS models.\nBack to the master results table."
+  },
+  {
+    "objectID": "docs/03-random-forest.html",
+    "href": "docs/03-random-forest.html",
+    "title": "Model 2 — Random Forest",
+    "section": "",
+    "text": "Where we are: Second of six model documents in the House Prices — Tidymodels Tour. Same structure as XGBoost: recipe → spec → workflow → tune → finalize → evaluate → save. We model log(SalePrice) and score on RMSE."
+  },
+  {
+    "objectID": "docs/03-random-forest.html#why-a-random-forest",
+    "href": "docs/03-random-forest.html#why-a-random-forest",
+    "title": "Model 2 — Random Forest",
+    "section": "Why a random forest?",
+    "text": "Why a random forest?\nWhere boosting builds trees sequentially to correct residuals, a random forest bags hundreds of decorrelated deep trees and averages them. It is famously hard to overfit, needs almost no tuning (really just mtry), and gives a strong baseline plus a permutation-importance read on which features matter."
+  },
+  {
+    "objectID": "docs/03-random-forest.html#setup",
+    "href": "docs/03-random-forest.html#setup",
+    "title": "Model 2 — Random Forest",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\nsource(here(\"R\", \"02_features.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(vip)\nlibrary(ranger)   # the engine\n\n\n\n\nShow code\ntrain &lt;- readr::read_csv(here(\"data\", \"processed\", \"train.csv\"),\n                         show_col_types = FALSE) |&gt;\n  mutate(SalePrice = log(SalePrice))"
+  },
+  {
+    "objectID": "docs/03-random-forest.html#recipe-spec-workflow",
+    "href": "docs/03-random-forest.html#recipe-spec-workflow",
+    "title": "Model 2 — Random Forest",
+    "section": "Recipe, spec, workflow",
+    "text": "Recipe, spec, workflow\n\n\nShow code\nrf_recipe &lt;- make_recipe(train)\n\n# 1000 trees fixed (more is just slower, not better once stable); tune mtry and\n# min_n. importance = \"permutation\" so we can plot variable importance.\nrf_spec &lt;- rand_forest(\n  mtry  = tune(),\n  min_n = tune(),\n  trees = 1000\n) |&gt;\n  set_engine(\"ranger\", importance = \"permutation\") |&gt;\n  set_mode(\"regression\")\n\nrf_wf &lt;- workflow() |&gt;\n  add_recipe(rf_recipe) |&gt;\n  add_model(rf_spec)"
+  },
+  {
+    "objectID": "docs/03-random-forest.html#tuning-with-10-fold-cross-validation",
+    "href": "docs/03-random-forest.html#tuning-with-10-fold-cross-validation",
+    "title": "Model 2 — Random Forest",
+    "section": "Tuning with 10-fold cross-validation",
+    "text": "Tuning with 10-fold cross-validation\n\n\nShow code\nset.seed(42)\nfolds &lt;- vfold_cv(train, v = 10, strata = SalePrice)\n\n\n\n\nShow code\n# mtry's upper bound depends on the number of predictors, so finalize against\n# the baked training data.\npreds &lt;- prep(make_recipe(train, num_comp = 2)) |&gt;\n  bake(new_data = NULL) |&gt;\n  select(-SalePrice, -Id)\n\nrf_params &lt;- extract_parameter_set_dials(rf_wf) |&gt;\n  finalize(preds) |&gt;\n  update(num_comp = num_comp(range = c(2L, 15L)))\n\nset.seed(42)\nrf_grid &lt;- grid_space_filling(rf_params, size = 20)\n\n\n\n\nShow code\nrf_metrics &lt;- metric_set(rmse, rsq)\n\nset.seed(42)\nrf_tuned &lt;- tune_grid(\n  rf_wf,\n  resamples = folds,\n  grid      = rf_grid,\n  metrics   = rf_metrics,\n  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)\n)\n\nsaveRDS(rf_tuned, here(\"models\", \"rf_res.rds\"))\n\n\n\nTuning results\n\n\nShow code\nautoplot(rf_tuned, metric = \"rmse\")\n\n\n\n\n\nRMSE across the tuning grid (autoplot).\n\n\n\n\n\n\nShow code\nshow_best(rf_tuned, metric = \"rmse\", n = 5)"
+  },
+  {
+    "objectID": "docs/03-random-forest.html#finalize-and-fit",
+    "href": "docs/03-random-forest.html#finalize-and-fit",
+    "title": "Model 2 — Random Forest",
+    "section": "Finalize and fit",
+    "text": "Finalize and fit\n\n\nShow code\nbest_rf &lt;- select_best(rf_tuned, metric = \"rmse\")\nbest_rf\n\n\n\n  \n\n\n\nShow code\nfinal_rf_wf &lt;- finalize_workflow(rf_wf, best_rf)\n\nset.seed(42)\nrf_fit &lt;- fit(final_rf_wf, data = train)"
+  },
+  {
+    "objectID": "docs/03-random-forest.html#cross-validated-performance",
+    "href": "docs/03-random-forest.html#cross-validated-performance",
+    "title": "Model 2 — Random Forest",
+    "section": "Cross-validated performance",
+    "text": "Cross-validated performance\n\n\nShow code\ncollect_metrics(rf_tuned) |&gt;\n  semi_join(best_rf, by = names(best_rf)) |&gt;\n  select(.metric, mean, std_err, n)\n\n\n\n  \n\n\n\n\nObserved vs predicted (out-of-fold)\n\n\nShow code\ncollect_predictions(rf_tuned) |&gt;\n  filter(.config == best_rf$.config) |&gt;\n  ggplot(aes(x = SalePrice, y = .pred)) +\n  geom_abline(slope = 1, intercept = 0, colour = \"grey50\", linetype = 2) +\n  geom_point(alpha = 0.35, colour = house_pal[1]) +\n  labs(title = \"Random Forest — CV predicted vs observed\",\n       x = \"Observed log(SalePrice)\", y = \"Predicted log(SalePrice)\") +\n  coord_equal()\n\n\n\n\n\nOut-of-fold predicted vs observed log(SalePrice).\n\n\n\n\n\n\nVariable importance\n\n\nShow code\nrf_fit |&gt;\n  extract_fit_parsnip() |&gt;\n  vip(num_features = 15, geom = \"col\",\n      aesthetics = list(fill = house_pal[2])) +\n  labs(title = \"Random forest variable importance\") +\n  theme_minimal()\n\n\n\n\n\nTop features by permutation importance."
+  },
+  {
+    "objectID": "docs/03-random-forest.html#save-the-fitted-workflow",
+    "href": "docs/03-random-forest.html#save-the-fitted-workflow",
+    "title": "Model 2 — Random Forest",
+    "section": "Save the fitted workflow",
+    "text": "Save the fitted workflow\n\n\nShow code\nsaveRDS(rf_fit, file = here(\"models\", \"rf_fit.rds\"))"
+  },
+  {
+    "objectID": "docs/03-random-forest.html#submission",
+    "href": "docs/03-random-forest.html#submission",
+    "title": "Model 2 — Random Forest",
+    "section": "Submission",
+    "text": "Submission\nquarto render docs/submission.qmd -P model:rf"
+  },
+  {
+    "objectID": "docs/03-random-forest.html#next-steps",
+    "href": "docs/03-random-forest.html#next-steps",
+    "title": "Model 2 — Random Forest",
+    "section": "Next steps",
+    "text": "Next steps\n\nContinue to the Neural Net, which leans on the normalized/PCA recipe.\nBack to the master results table."
+  },
+  {
+    "objectID": "docs/01-eda.html",
+    "href": "docs/01-eda.html",
+    "title": "Exploratory Data Analysis",
+    "section": "",
+    "text": "Where we are: This is step one of the House Prices — Tidymodels Tour. Before fitting any model we look at the data, find the signal, and let what we see motivate the shared feature recipe in R/02_features.R (make_recipe()) and the up-front engineering in R/03_engineer.R. Every model document downstream trains on those features."
+  },
+  {
+    "objectID": "docs/01-eda.html#setup",
+    "href": "docs/01-eda.html#setup",
+    "title": "Exploratory Data Analysis",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(skimr)   # skim() — richer than summary()\nlibrary(scales)  # dollar()/percent() axis + label formatting\n\n\n\n\nShow code\n# The training set is the only one with the SalePrice label, so all exploratory\n# analysis happens here. We read the RAW data (pre-engineering) to see it as it\n# arrives from Kaggle.\ntrain &lt;- read_csv(here(\"data\", \"raw\", \"train.csv\"), show_col_types = FALSE)\nglimpse(train[, 1:12])\n\n\nRows: 1,460\nColumns: 12\n$ Id          &lt;dbl&gt; 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,…\n$ MSSubClass  &lt;dbl&gt; 60, 20, 60, 70, 60, 50, 20, 60, 50, 190, 20, 60, 20, 20, 2…\n$ MSZoning    &lt;chr&gt; \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"RL\", \"RM\", \"RL\"…\n$ LotFrontage &lt;dbl&gt; 65, 80, 68, 60, 84, 85, 75, NA, 51, 50, 70, 85, NA, 91, NA…\n$ LotArea     &lt;dbl&gt; 8450, 9600, 11250, 9550, 14260, 14115, 10084, 10382, 6120,…\n$ Street      &lt;chr&gt; \"Pave\", \"Pave\", \"Pave\", \"Pave\", \"Pave\", \"Pave\", \"Pave\", \"P…\n$ Alley       &lt;chr&gt; NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA…\n$ LotShape    &lt;chr&gt; \"Reg\", \"Reg\", \"IR1\", \"IR1\", \"IR1\", \"IR1\", \"Reg\", \"IR1\", \"R…\n$ LandContour &lt;chr&gt; \"Lvl\", \"Lvl\", \"Lvl\", \"Lvl\", \"Lvl\", \"Lvl\", \"Lvl\", \"Lvl\", \"L…\n$ Utilities   &lt;chr&gt; \"AllPub\", \"AllPub\", \"AllPub\", \"AllPub\", \"AllPub\", \"AllPub\"…\n$ LotConfig   &lt;chr&gt; \"Inside\", \"FR2\", \"Inside\", \"Corner\", \"FR2\", \"Inside\", \"Ins…\n$ LandSlope   &lt;chr&gt; \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"Gtl\", \"G…\n\n\nThe Ames data has 1460 training houses described by 79 explanatory variables plus the Id and the target SalePrice. That is a lot of columns — 43 categorical, 37 numeric — so the modelling leans hard on the recipe."
+  },
+  {
+    "objectID": "docs/01-eda.html#the-target-saleprice-is-right-skewed",
+    "href": "docs/01-eda.html#the-target-saleprice-is-right-skewed",
+    "title": "Exploratory Data Analysis",
+    "section": "The target: SalePrice is right-skewed",
+    "text": "The target: SalePrice is right-skewed\n\n\nShow code\np_raw &lt;- ggplot(train, aes(x = SalePrice)) +\n  geom_histogram(bins = 50, fill = house_pal[1]) +\n  scale_x_continuous(labels = dollar) +\n  labs(title = \"SalePrice\", x = NULL, y = \"Count\")\n\np_log &lt;- ggplot(train, aes(x = log(SalePrice))) +\n  geom_histogram(bins = 50, fill = house_pal[2]) +\n  labs(title = \"log(SalePrice)\", x = NULL, y = \"Count\")\n\npatchwork_ok &lt;- requireNamespace(\"patchwork\", quietly = TRUE)\nif (patchwork_ok) patchwork::wrap_plots(p_raw, p_log) else p_log\n\n\n\n\n\nSalePrice (left) is right-skewed; log(SalePrice) (right) is close to normal.\n\n\n\n\nThis single fact drives the whole project: prices span an order of magnitude and are right-skewed, so we model log(SalePrice). Conveniently, Kaggle scores the competition on RMSE of the log price — so training on the log scale optimises the leaderboard metric directly. range(SalePrice) is roughly $34,900 – $755,000."
+  },
+  {
+    "objectID": "docs/01-eda.html#first-look-structure-and-missingness",
+    "href": "docs/01-eda.html#first-look-structure-and-missingness",
+    "title": "Exploratory Data Analysis",
+    "section": "First look: structure and missingness",
+    "text": "First look: structure and missingness\n\n\nShow code\ntrain |&gt;\n  summarise(across(everything(), ~ mean(is.na(.x)))) |&gt;\n  pivot_longer(everything(), names_to = \"variable\", values_to = \"pct_missing\") |&gt;\n  filter(pct_missing &gt; 0) |&gt;\n  ggplot(aes(x = reorder(variable, pct_missing), y = pct_missing)) +\n  geom_col(fill = house_pal[1]) +\n  geom_text(aes(label = percent(pct_missing, accuracy = 1)), hjust = -0.1, size = 3) +\n  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.15))) +\n  coord_flip() +\n  labs(title = \"Missingness by column\", x = NULL, y = \"Missing\")\n\n\n\n\n\nColumns with missing values. Most ‘missingness’ is really absence.\n\n\n\n\nThe crucial Ames gotcha: for most of these columns NA does not mean “unknown”, it means “the feature is absent”. PoolQC is missing for 99.5% of houses because almost no house has a pool; Alley NA means no alley access; GarageType/BsmtQual NA means no garage/basement. Blindly imputing these would invent features that aren’t there. So R/03_engineer.R recodes them:\n\nCategorical absent → \"None\" (Alley, PoolQC, Fence, all the Bsmt/Garage quality columns, FireplaceQu, MasVnrType, MiscFeature).\nNumeric absent → 0 (GarageArea, GarageCars, MasVnrArea, all the basement square-footages).\nGenuinely missing → impute in the recipe. Only LotFrontage (~18%) and a handful of one-off stray NAs in the test set (MSZoning, KitchenQual, …) are truly unknown; those get KNN / median / mode imputation inside every CV fold."
+  },
+  {
+    "objectID": "docs/01-eda.html#what-predicts-price",
+    "href": "docs/01-eda.html#what-predicts-price",
+    "title": "Exploratory Data Analysis",
+    "section": "What predicts price?",
+    "text": "What predicts price?\n\nOverall quality\n\n\nShow code\ntrain |&gt;\n  mutate(OverallQual = factor(OverallQual)) |&gt;\n  ggplot(aes(x = OverallQual, y = SalePrice, fill = OverallQual)) +\n  geom_boxplot(show.legend = FALSE) +\n  scale_y_continuous(labels = dollar) +\n  labs(title = \"Overall quality is the single strongest predictor\",\n       x = \"OverallQual (1–10)\", y = \"SalePrice\")\n\n\n\n\n\nSalePrice rises steeply and monotonically with OverallQual.\n\n\n\n\nOverallQual — the rater’s 1–10 judgement of material and finish — is the strongest single predictor in the data, and nearly log-linear against price.\n\n\nLiving area\n\n\nShow code\nggplot(train, aes(x = GrLivArea, y = SalePrice)) +\n  geom_point(alpha = 0.4, colour = house_pal[1]) +\n  geom_smooth(method = \"lm\", formula = y ~ x, colour = house_pal[3], se = FALSE) +\n  scale_y_continuous(labels = dollar) +\n  labs(title = \"Bigger houses cost more (mostly)\",\n       x = \"GrLivArea (sq ft)\", y = \"SalePrice\")\n\n\n\n\n\nAbove-grade living area vs price. Note the two high-area/low-price outliers.\n\n\n\n\nLiving area is strongly linear against price. The two houses bottom-right (huge but cheap) are the well-known Ames outliers — partial sales. We leave them in and let the log transform + robust models absorb them, but they are worth knowing about. This motivates the engineered TotalSF (basement + 1st + 2nd floor).\n\n\nNeighborhood\n\n\nShow code\ntrain |&gt;\n  group_by(Neighborhood) |&gt;\n  summarise(med = median(SalePrice), .groups = \"drop\") |&gt;\n  ggplot(aes(x = reorder(Neighborhood, med), y = med, fill = med)) +\n  geom_col(show.legend = FALSE) +\n  scale_y_continuous(labels = dollar) +\n  coord_flip() +\n  labs(title = \"Median price by neighborhood\",\n       x = NULL, y = \"Median SalePrice\")\n\n\n\n\n\nMedian SalePrice by neighborhood — location, location, location.\n\n\n\n\nNeighborhood spreads median price roughly 3× from cheapest to dearest — a strong categorical the recipe dummy-encodes (lumping the rarest levels into \"Rare\").\n\n\nAge\n\n\nShow code\ntrain |&gt;\n  ggplot(aes(x = YearBuilt, y = SalePrice)) +\n  geom_point(alpha = 0.35, colour = house_pal[4]) +\n  geom_smooth(method = \"loess\", formula = y ~ x, colour = house_pal[3], se = FALSE) +\n  scale_y_continuous(labels = dollar) +\n  labs(title = \"Price by year built\", x = \"YearBuilt\", y = \"SalePrice\")\n\n\n\n\n\nNewer houses sell for more; the relationship is nonlinear.\n\n\n\n\nAge matters, nonlinearly — motivating the engineered HouseAge, RemodAge, and an IsNew flag."
+  },
+  {
+    "objectID": "docs/01-eda.html#what-this-means-for-the-recipe",
+    "href": "docs/01-eda.html#what-this-means-for-the-recipe",
+    "title": "Exploratory Data Analysis",
+    "section": "What this means for the recipe",
+    "text": "What this means for the recipe\nEverything above justifies the two-stage feature pipeline:\n\nR/03_engineer.R (deterministic, up front): recode NA → \"None\"/0 for absent features; derive TotalSF, TotalBath, TotalPorchSF, HouseAge, RemodAge, and the Has*/Is* flags; treat MSSubClass as categorical.\nmake_recipe() (estimated per CV fold): KNN-impute LotFrontage, median/mode-impute stray NAs, Yeo-Johnson the skewed numerics, lump rare factor levels, dummy-encode, normalize, and append principal components.\n\n\n\n\n\n\n\nNote\n\n\n\nThe scale-sensitive models (neural net, SVM, elastic net) rely on the step_normalize() + step_YeoJohnson() in the recipe; the tree ensembles are scale-invariant and ignore them harmlessly."
+  },
+  {
+    "objectID": "docs/01-eda.html#next-steps",
+    "href": "docs/01-eda.html#next-steps",
+    "title": "Exploratory Data Analysis",
+    "section": "Next steps",
+    "text": "Next steps\nTime to model:\n\nXGBoost — start here; it establishes the template the other docs reuse.\nThen Random Forest, Neural Net, Elastic Net, SVM, MARS.\nBack to the master document for the results table."
+  },
+  {
+    "objectID": "docs/02-xgboost.html",
+    "href": "docs/02-xgboost.html",
+    "title": "Model 1 — XGBoost",
+    "section": "",
+    "text": "Where we are: First of six model documents in the House Prices — Tidymodels Tour. All six follow the same structure — recipe → spec → workflow → tune → finalize → evaluate → save — so once you’ve read this one, the others are quick to skim for the differences. The features come from the EDA and the shared make_recipe(). Remember the project-wide convention: we model log(SalePrice), because Kaggle scores this competition as RMSE on the log scale (see the master document)."
+  },
+  {
+    "objectID": "docs/02-xgboost.html#why-xgboost-first",
+    "href": "docs/02-xgboost.html#why-xgboost-first",
+    "title": "Model 1 — XGBoost",
+    "section": "Why XGBoost first?",
+    "text": "Why XGBoost first?\nGradient-boosted decision trees are the default first reach on tabular Kaggle problems. They handle mixed numeric/categorical features, capture interactions (quality × size, neighborhood × age) automatically, are robust to monotone transforms, and tune to strong accuracy with modest effort. We tune four of the most impactful knobs."
+  },
+  {
+    "objectID": "docs/02-xgboost.html#setup",
+    "href": "docs/02-xgboost.html#setup",
+    "title": "Model 1 — XGBoost",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\n# Project setup: tidyverse + tidymodels, seed = 42, paths, parallel backend.\nsource(here::here(\"R\", \"00_setup.R\"))\n# Shared feature engineering: defines make_recipe(data).\nsource(here(\"R\", \"02_features.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(vip)         # variable importance plots\nlibrary(xgboost)     # the engine\n\n\n\n\nShow code\n# Model the LOG of SalePrice — this is the scale Kaggle scores on, so training\n# with RMSE here directly optimises the leaderboard metric.\ntrain &lt;- readr::read_csv(here(\"data\", \"processed\", \"train.csv\"),\n                         show_col_types = FALSE) |&gt;\n  mutate(SalePrice = log(SalePrice))"
+  },
+  {
+    "objectID": "docs/02-xgboost.html#the-recipe",
+    "href": "docs/02-xgboost.html#the-recipe",
+    "title": "Model 1 — XGBoost",
+    "section": "The recipe",
+    "text": "The recipe\nThe shared recipe encodes everything we justified in the EDA: impute LotFrontage, Yeo-Johnson the skewed areas, lump rare factor levels, dummy-encode, drop the Id, and append principal components.\n\n\nShow code\nxgb_recipe &lt;- make_recipe(train)\nxgb_recipe\n\n\n\n\n\n── Recipe ──────────────────────────────────────────────────────────────────────\n\n\n\n\n\n── Inputs \n\n\nNumber of variables by role\n\n\noutcome:    1\npredictor: 92\nid:         1\n\n\n\n\n\n── Operations \n\n\n• Sparse, unbalanced variable filter on: all_nominal_predictors()\n\n\n• K-nearest neighbor imputation for: LotFrontage\n\n\n• Median imputation for: all_numeric_predictors()\n\n\n• Mode imputation for: all_nominal_predictors()\n\n\n• Yeo-Johnson transformation on: all_numeric_predictors()\n\n\n• Novel factor level assignment for: all_nominal_predictors()\n\n\n• Collapsing factor levels for: all_nominal_predictors()\n\n\n• Dummy variables from: all_nominal_predictors()\n\n\n• Zero variance filter on: all_predictors()\n\n\n• Centering and scaling for: all_numeric_predictors()\n\n\n• PCA extraction with: all_numeric_predictors()"
+  },
+  {
+    "objectID": "docs/02-xgboost.html#the-model-specification",
+    "href": "docs/02-xgboost.html#the-model-specification",
+    "title": "Model 1 — XGBoost",
+    "section": "The model specification",
+    "text": "The model specification\nWe mark the four tuning parameters with tune(). tidymodels fills them in during the grid search. Note set_mode(\"regression\").\n\n\nShow code\nxgb_spec &lt;- boost_tree(\n  trees      = tune(),\n  tree_depth = tune(),\n  learn_rate = tune(),\n  min_n      = tune()\n) |&gt;\n  set_engine(\"xgboost\") |&gt;\n  set_mode(\"regression\")\n\nxgb_spec\n\n\nBoosted Tree Model Specification (regression)\n\nMain Arguments:\n  trees = tune()\n  min_n = tune()\n  tree_depth = tune()\n  learn_rate = tune()\n\nComputational engine: xgboost"
+  },
+  {
+    "objectID": "docs/02-xgboost.html#the-workflow",
+    "href": "docs/02-xgboost.html#the-workflow",
+    "title": "Model 1 — XGBoost",
+    "section": "The workflow",
+    "text": "The workflow\nA workflow bundles the recipe and the model so resampling applies the exact same preprocessing to every fold — no leakage.\n\n\nShow code\nxgb_wf &lt;- workflow() |&gt;\n  add_recipe(xgb_recipe) |&gt;\n  add_model(xgb_spec)"
+  },
+  {
+    "objectID": "docs/02-xgboost.html#tuning-with-10-fold-cross-validation",
+    "href": "docs/02-xgboost.html#tuning-with-10-fold-cross-validation",
+    "title": "Model 1 — XGBoost",
+    "section": "Tuning with 10-fold cross-validation",
+    "text": "Tuning with 10-fold cross-validation\n\n\nShow code\n# Stratify on the (log) outcome so each fold spans the full price range.\nset.seed(42)\nfolds &lt;- vfold_cv(train, v = 10, strata = SalePrice)\n\n\n\n\nShow code\n# Predictors used to finalize data-dependent params (num_comp upper bound).\npreds &lt;- prep(make_recipe(train, num_comp = 2)) |&gt;\n  bake(new_data = NULL) |&gt;\n  select(-SalePrice, -Id)\n\nxgb_params &lt;- extract_parameter_set_dials(xgb_wf) |&gt;\n  finalize(preds) |&gt;\n  update(num_comp = num_comp(range = c(2L, 15L)))\n\nset.seed(42)\nxgb_grid &lt;- grid_space_filling(xgb_params, size = 20)\n\n\n\n\nShow code\n# Score every candidate on RMSE (the competition metric on the log scale) and\n# R-squared (interpretable goodness-of-fit).\nxgb_metrics &lt;- metric_set(rmse, rsq)\n\nset.seed(42)\nxgb_tuned &lt;- tune_grid(\n  xgb_wf,\n  resamples = folds,\n  grid      = xgb_grid,\n  metrics   = xgb_metrics,\n  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)\n)\n\n\n\n\nShow code\nsaveRDS(xgb_tuned, here(\"models\", \"xgboost_res.rds\"))\n\n\n\nTuning results\n\n\nShow code\nautoplot(xgb_tuned, metric = \"rmse\")\n\n\n\n\n\nRMSE across the tuning grid for each hyperparameter (autoplot).\n\n\n\n\n\n\nShow code\n# The top candidates by RMSE (lower is better).\nshow_best(xgb_tuned, metric = \"rmse\", n = 5)"
+  },
+  {
+    "objectID": "docs/02-xgboost.html#finalize-and-fit-on-the-full-training-set",
+    "href": "docs/02-xgboost.html#finalize-and-fit-on-the-full-training-set",
+    "title": "Model 1 — XGBoost",
+    "section": "Finalize and fit on the full training set",
+    "text": "Finalize and fit on the full training set\n\n\nShow code\nbest_xgb &lt;- select_best(xgb_tuned, metric = \"rmse\")\nbest_xgb\n\n\n\n  \n\n\n\nShow code\nfinal_xgb_wf &lt;- finalize_workflow(xgb_wf, best_xgb)\n\n# Fit the finalized workflow on ALL the training data — the model we ship.\nset.seed(42)\nxgb_fit &lt;- fit(final_xgb_wf, data = train)"
+  },
+  {
+    "objectID": "docs/02-xgboost.html#cross-validated-performance",
+    "href": "docs/02-xgboost.html#cross-validated-performance",
+    "title": "Model 1 — XGBoost",
+    "section": "Cross-validated performance",
+    "text": "Cross-validated performance\nThe fairest estimate of out-of-sample skill is the CV score of the chosen configuration — not the fit on the full training data (which overfits by construction).\n\n\nShow code\ncollect_metrics(xgb_tuned) |&gt;\n  semi_join(best_xgb, by = names(best_xgb)) |&gt;\n  select(.metric, mean, std_err, n)\n\n\n\n  \n\n\n\n\n\n\n\n\n\nTip\n\n\n\nThe rmse here is on the log(SalePrice) scale — the same units Kaggle reports on the leaderboard. These CV metrics feed the results table on the master document automatically.\n\n\n\nObserved vs predicted (out-of-fold)\nBuilt from the held-out CV predictions for the best configuration — so it reflects generalization, not memorization. Points on the diagonal are perfect.\n\n\nShow code\ncollect_predictions(xgb_tuned) |&gt;\n  filter(.config == best_xgb$.config) |&gt;\n  ggplot(aes(x = SalePrice, y = .pred)) +\n  geom_abline(slope = 1, intercept = 0, colour = \"grey50\", linetype = 2) +\n  geom_point(alpha = 0.35, colour = house_pal[1]) +\n  labs(title = \"XGBoost — CV predicted vs observed\",\n       x = \"Observed log(SalePrice)\", y = \"Predicted log(SalePrice)\") +\n  coord_equal()\n\n\n\n\n\nOut-of-fold predicted vs observed log(SalePrice).\n\n\n\n\n\n\nVariable importance\n\n\nShow code\nxgb_fit |&gt;\n  extract_fit_parsnip() |&gt;\n  vip(num_features = 15, geom = \"col\",\n      aesthetics = list(fill = house_pal[1])) +\n  labs(title = \"XGBoost variable importance\") +\n  theme_minimal()\n\n\n\n\n\nTop features by XGBoost gain. Quality and size dominate.\n\n\n\n\nOverallQual, GrLivArea, the engineered TotalSF, and neighborhood/age features sit at the top — exactly the signal the EDA surfaced."
+  },
+  {
+    "objectID": "docs/02-xgboost.html#save-the-fitted-workflow",
+    "href": "docs/02-xgboost.html#save-the-fitted-workflow",
+    "title": "Model 1 — XGBoost",
+    "section": "Save the fitted workflow",
+    "text": "Save the fitted workflow\n\n\nShow code\nsaveRDS(xgb_fit, file = here(\"models\", \"xgboost_fit.rds\"))"
+  },
+  {
+    "objectID": "docs/02-xgboost.html#submission",
+    "href": "docs/02-xgboost.html#submission",
+    "title": "Model 1 — XGBoost",
+    "section": "Submission",
+    "text": "Submission\nGenerate this model’s leaderboard CSV with the parameterized submission document:\nquarto render docs/submission.qmd -P model:xgboost\nThat loads models/xgboost_fit.rds, predicts on the test set, exponentiates back to dollars, and writes models/submission_xgboost.csv (columns Id, SalePrice). See the Kaggle setup guide for authentication."
+  },
+  {
+    "objectID": "docs/02-xgboost.html#next-steps",
+    "href": "docs/02-xgboost.html#next-steps",
+    "title": "Model 1 — XGBoost",
+    "section": "Next steps",
+    "text": "Next steps\n\nCompare against the Random Forest — a robust, almost-no-tuning baseline.\nThen the Neural Net, Elastic Net, SVM and MARS.\nRecord this model’s CV scores in the master results table."
+  },
+  {
+    "objectID": "docs/04-neural-net.html",
+    "href": "docs/04-neural-net.html",
+    "title": "Model 3 — Neural Net",
+    "section": "",
+    "text": "Where we are: Third of six model documents in the House Prices — Tidymodels Tour. Same structure as the others; we model log(SalePrice) and score on RMSE. The neural net is the model that most needs the recipe’s step_normalize() + step_pca() — MLPs are sensitive to input scale in a way tree ensembles are not."
+  },
+  {
+    "objectID": "docs/04-neural-net.html#why-a-neural-net-here",
+    "href": "docs/04-neural-net.html#why-a-neural-net-here",
+    "title": "Model 3 — Neural Net",
+    "section": "Why a neural net here?",
+    "text": "Why a neural net here?\nA single-hidden-layer MLP learns a smooth nonlinear function of the (normalized, decorrelated) principal components. On a well-featured tabular problem it rarely beats gradient boosting, but it makes different errors — which is exactly what makes it a valuable member of the stacked ensemble later."
+  },
+  {
+    "objectID": "docs/04-neural-net.html#setup",
+    "href": "docs/04-neural-net.html#setup",
+    "title": "Model 3 — Neural Net",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\nsource(here(\"R\", \"02_features.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(nnet)   # the engine\n\n\n\n\nShow code\ntrain &lt;- readr::read_csv(here(\"data\", \"processed\", \"train.csv\"),\n                         show_col_types = FALSE) |&gt;\n  mutate(SalePrice = log(SalePrice))"
+  },
+  {
+    "objectID": "docs/04-neural-net.html#recipe-spec-workflow",
+    "href": "docs/04-neural-net.html#recipe-spec-workflow",
+    "title": "Model 3 — Neural Net",
+    "section": "Recipe, spec, workflow",
+    "text": "Recipe, spec, workflow\nThe shared recipe already normalizes all numeric predictors and appends PCs, so the MLP sees well-behaved inputs. We tune the hidden-layer width and the weight decay penalty, and lean on num_comp to control input dimensionality.\n\n\nShow code\nnnet_recipe &lt;- make_recipe(train)\n\nnnet_spec &lt;- mlp(\n  hidden_units = tune(),\n  penalty      = tune(),\n  epochs       = 300\n) |&gt;\n  # MaxNWts must be large enough for (many predictors) x (hidden units); trace\n  # off to keep the tuning log quiet. linout is set automatically in regression.\n  set_engine(\"nnet\", MaxNWts = 10000, trace = FALSE) |&gt;\n  set_mode(\"regression\")\n\nnnet_wf &lt;- workflow() |&gt;\n  add_recipe(nnet_recipe) |&gt;\n  add_model(nnet_spec)"
+  },
+  {
+    "objectID": "docs/04-neural-net.html#tuning-with-10-fold-cross-validation",
+    "href": "docs/04-neural-net.html#tuning-with-10-fold-cross-validation",
+    "title": "Model 3 — Neural Net",
+    "section": "Tuning with 10-fold cross-validation",
+    "text": "Tuning with 10-fold cross-validation\n\n\nShow code\nset.seed(42)\nfolds &lt;- vfold_cv(train, v = 10, strata = SalePrice)\n\n\n\n\nShow code\npreds &lt;- prep(make_recipe(train, num_comp = 2)) |&gt;\n  bake(new_data = NULL) |&gt;\n  select(-SalePrice, -Id)\n\nnnet_params &lt;- extract_parameter_set_dials(nnet_wf) |&gt;\n  finalize(preds) |&gt;\n  update(\n    hidden_units = hidden_units(range = c(2L, 15L)),\n    num_comp     = num_comp(range = c(2L, 15L))\n  )\n\nset.seed(42)\nnnet_grid &lt;- grid_space_filling(nnet_params, size = 20)\n\n\n\n\nShow code\nnnet_metrics &lt;- metric_set(rmse, rsq)\n\nset.seed(42)\nnnet_tuned &lt;- tune_grid(\n  nnet_wf,\n  resamples = folds,\n  grid      = nnet_grid,\n  metrics   = nnet_metrics,\n  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)\n)\n\nsaveRDS(nnet_tuned, here(\"models\", \"nnet_res.rds\"))\n\n\n\nTuning results\n\n\nShow code\nautoplot(nnet_tuned, metric = \"rmse\")\n\n\n\n\n\nRMSE across the tuning grid (autoplot).\n\n\n\n\n\n\nShow code\nshow_best(nnet_tuned, metric = \"rmse\", n = 5)"
+  },
+  {
+    "objectID": "docs/04-neural-net.html#finalize-and-fit",
+    "href": "docs/04-neural-net.html#finalize-and-fit",
+    "title": "Model 3 — Neural Net",
+    "section": "Finalize and fit",
+    "text": "Finalize and fit\n\n\nShow code\nbest_nnet &lt;- select_best(nnet_tuned, metric = \"rmse\")\nbest_nnet\n\n\n\n  \n\n\n\nShow code\nfinal_nnet_wf &lt;- finalize_workflow(nnet_wf, best_nnet)\n\nset.seed(42)\nnnet_fit &lt;- fit(final_nnet_wf, data = train)"
+  },
+  {
+    "objectID": "docs/04-neural-net.html#cross-validated-performance",
+    "href": "docs/04-neural-net.html#cross-validated-performance",
+    "title": "Model 3 — Neural Net",
+    "section": "Cross-validated performance",
+    "text": "Cross-validated performance\n\n\nShow code\ncollect_metrics(nnet_tuned) |&gt;\n  semi_join(best_nnet, by = names(best_nnet)) |&gt;\n  select(.metric, mean, std_err, n)\n\n\n\n  \n\n\n\n\nObserved vs predicted (out-of-fold)\n\n\nShow code\ncollect_predictions(nnet_tuned) |&gt;\n  filter(.config == best_nnet$.config) |&gt;\n  ggplot(aes(x = SalePrice, y = .pred)) +\n  geom_abline(slope = 1, intercept = 0, colour = \"grey50\", linetype = 2) +\n  geom_point(alpha = 0.35, colour = house_pal[3]) +\n  labs(title = \"Neural Net — CV predicted vs observed\",\n       x = \"Observed log(SalePrice)\", y = \"Predicted log(SalePrice)\") +\n  coord_equal()\n\n\n\n\n\nOut-of-fold predicted vs observed log(SalePrice)."
+  },
+  {
+    "objectID": "docs/04-neural-net.html#save-the-fitted-workflow",
+    "href": "docs/04-neural-net.html#save-the-fitted-workflow",
+    "title": "Model 3 — Neural Net",
+    "section": "Save the fitted workflow",
+    "text": "Save the fitted workflow\n\n\nShow code\nsaveRDS(nnet_fit, file = here(\"models\", \"nnet_fit.rds\"))"
+  },
+  {
+    "objectID": "docs/04-neural-net.html#submission",
+    "href": "docs/04-neural-net.html#submission",
+    "title": "Model 3 — Neural Net",
+    "section": "Submission",
+    "text": "Submission\nquarto render docs/submission.qmd -P model:nnet"
+  },
+  {
+    "objectID": "docs/04-neural-net.html#next-steps",
+    "href": "docs/04-neural-net.html#next-steps",
+    "title": "Model 3 — Neural Net",
+    "section": "Next steps",
+    "text": "Next steps\n\nContinue to the interpretable Elastic Net linear baseline, then SVM and MARS.\nBack to the master results table."
+  },
+  {
+    "objectID": "docs/07-svm.html",
+    "href": "docs/07-svm.html",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "",
+    "text": "Where we are: Fifth of six model documents in the House Prices — Tidymodels Tour. Same structure as the others; we model log(SalePrice) and score on RMSE."
+  },
+  {
+    "objectID": "docs/07-svm.html#why-an-svm",
+    "href": "docs/07-svm.html#why-an-svm",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Why an SVM?",
+    "text": "Why an SVM?\nSupport vector regression with a radial-basis kernel draws a smooth, nonlinear response surface over the normalized principal components. Its errors are structurally different from the trees’ and the linear model’s — diversity that pays off in the stack. It needs scaled inputs, which the shared recipe already provides. We tune the regularisation cost and the kernel width rbf_sigma."
+  },
+  {
+    "objectID": "docs/07-svm.html#setup",
+    "href": "docs/07-svm.html#setup",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\nsource(here(\"R\", \"02_features.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(kernlab)   # the engine\n\n\n\n\nShow code\ntrain &lt;- readr::read_csv(here(\"data\", \"processed\", \"train.csv\"),\n                         show_col_types = FALSE) |&gt;\n  mutate(SalePrice = log(SalePrice))"
+  },
+  {
+    "objectID": "docs/07-svm.html#recipe-spec-workflow",
+    "href": "docs/07-svm.html#recipe-spec-workflow",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Recipe, spec, workflow",
+    "text": "Recipe, spec, workflow\n\n\nShow code\nsvm_recipe &lt;- make_recipe(train)\n\nsvm_spec &lt;- svm_rbf(\n  cost      = tune(),\n  rbf_sigma = tune()\n) |&gt;\n  set_engine(\"kernlab\") |&gt;\n  set_mode(\"regression\")\n\nsvm_wf &lt;- workflow() |&gt;\n  add_recipe(svm_recipe) |&gt;\n  add_model(svm_spec)"
+  },
+  {
+    "objectID": "docs/07-svm.html#tuning-with-10-fold-cross-validation",
+    "href": "docs/07-svm.html#tuning-with-10-fold-cross-validation",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Tuning with 10-fold cross-validation",
+    "text": "Tuning with 10-fold cross-validation\n\n\nShow code\nset.seed(42)\nfolds &lt;- vfold_cv(train, v = 10, strata = SalePrice)\n\n\n\n\nShow code\npreds &lt;- prep(make_recipe(train, num_comp = 2)) |&gt;\n  bake(new_data = NULL) |&gt;\n  select(-SalePrice, -Id)\n\nsvm_params &lt;- extract_parameter_set_dials(svm_wf) |&gt;\n  finalize(preds) |&gt;\n  update(num_comp = num_comp(range = c(2L, 15L)))\n\nset.seed(42)\nsvm_grid &lt;- grid_space_filling(svm_params, size = 20)\n\n\n\n\nShow code\nsvm_metrics &lt;- metric_set(rmse, rsq)\n\nset.seed(42)\nsvm_tuned &lt;- tune_grid(\n  svm_wf,\n  resamples = folds,\n  grid      = svm_grid,\n  metrics   = svm_metrics,\n  control   = control_grid(save_pred = TRUE, save_workflow = TRUE)\n)\n\nsaveRDS(svm_tuned, here(\"models\", \"svm_res.rds\"))\n\n\n\nTuning results\n\n\nShow code\nautoplot(svm_tuned, metric = \"rmse\")\n\n\n\n\n\nRMSE across the tuning grid (autoplot).\n\n\n\n\n\n\nShow code\nshow_best(svm_tuned, metric = \"rmse\", n = 5)"
+  },
+  {
+    "objectID": "docs/07-svm.html#finalize-and-fit",
+    "href": "docs/07-svm.html#finalize-and-fit",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Finalize and fit",
+    "text": "Finalize and fit\n\n\nShow code\nbest_svm &lt;- select_best(svm_tuned, metric = \"rmse\")\nbest_svm\n\n\n\n  \n\n\n\nShow code\nfinal_svm_wf &lt;- finalize_workflow(svm_wf, best_svm)\n\nset.seed(42)\nsvm_fit &lt;- fit(final_svm_wf, data = train)"
+  },
+  {
+    "objectID": "docs/07-svm.html#cross-validated-performance",
+    "href": "docs/07-svm.html#cross-validated-performance",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Cross-validated performance",
+    "text": "Cross-validated performance\n\n\nShow code\ncollect_metrics(svm_tuned) |&gt;\n  semi_join(best_svm, by = names(best_svm)) |&gt;\n  select(.metric, mean, std_err, n)\n\n\n\n  \n\n\n\n\nObserved vs predicted (out-of-fold)\n\n\nShow code\ncollect_predictions(svm_tuned) |&gt;\n  filter(.config == best_svm$.config) |&gt;\n  ggplot(aes(x = SalePrice, y = .pred)) +\n  geom_abline(slope = 1, intercept = 0, colour = \"grey50\", linetype = 2) +\n  geom_point(alpha = 0.35, colour = house_pal[5]) +\n  labs(title = \"SVM (RBF) — CV predicted vs observed\",\n       x = \"Observed log(SalePrice)\", y = \"Predicted log(SalePrice)\") +\n  coord_equal()\n\n\n\n\n\nOut-of-fold predicted vs observed log(SalePrice)."
+  },
+  {
+    "objectID": "docs/07-svm.html#save-the-fitted-workflow",
+    "href": "docs/07-svm.html#save-the-fitted-workflow",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Save the fitted workflow",
+    "text": "Save the fitted workflow\n\n\nShow code\nsaveRDS(svm_fit, file = here(\"models\", \"svm_fit.rds\"))"
+  },
+  {
+    "objectID": "docs/07-svm.html#submission",
+    "href": "docs/07-svm.html#submission",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Submission",
+    "text": "Submission\nquarto render docs/submission.qmd -P model:svm"
+  },
+  {
+    "objectID": "docs/07-svm.html#next-steps",
+    "href": "docs/07-svm.html#next-steps",
+    "title": "Model 5 — Support Vector Machine (RBF)",
+    "section": "Next steps",
+    "text": "Next steps\n\nFinish the base models with MARS, then blend everything in the Stacked Ensemble.\nBack to the master results table."
+  },
+  {
+    "objectID": "docs/05-stack.html",
+    "href": "docs/05-stack.html",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "",
+    "text": "Where we are: The capstone of the House Prices — Tidymodels Tour. The six base-model documents (XGBoost, Random Forest, Neural Net, Elastic Net, SVM, MARS) each saved their tuning results (every candidate model and its out-of-fold predictions) to models/&lt;model&gt;_res.rds. Here we feed all of those candidates to stacks, which learns a regularised linear blend over them — usually beating any single model, because the members make different mistakes."
+  },
+  {
+    "objectID": "docs/05-stack.html#why-stack",
+    "href": "docs/05-stack.html#why-stack",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "Why stack?",
+    "text": "Why stack?\nEach model family has a different inductive bias: gradient boosting chases interactions, the random forest averages decorrelated trees, the neural net and SVM learn smooth functions of the principal components, the elastic net is linear, MARS is piecewise-linear. A stack fits a meta-learner (penalised linear regression) on the members’ out-of-fold predictions, keeping only the candidates that pull their weight. Everything stays on the log(SalePrice) scale until the final submission."
+  },
+  {
+    "objectID": "docs/05-stack.html#setup",
+    "href": "docs/05-stack.html#setup",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "Setup",
+    "text": "Setup\n\n\nShow code\nsource(here::here(\"R\", \"00_setup.R\"))\n\nlibrary(tidyverse)\nlibrary(tidymodels)\nlibrary(here)\nlibrary(stacks)\n# The member engines must be attached so fit_members() can refit them.\nlibrary(ranger)\nlibrary(xgboost)\nlibrary(nnet)\nlibrary(glmnet)\nlibrary(kernlab)\nlibrary(earth)"
+  },
+  {
+    "objectID": "docs/05-stack.html#load-the-tuning-results",
+    "href": "docs/05-stack.html#load-the-tuning-results",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "Load the tuning results",
+    "text": "Load the tuning results\n\n\nShow code\n# Each *_res.rds is a tune_grid result saved with control_grid(save_pred = TRUE,\n# save_workflow = TRUE) — exactly what stacks needs to assemble candidates.\nxgb_res  &lt;- readRDS(here(\"models\", \"xgboost_res.rds\"))\nrf_res   &lt;- readRDS(here(\"models\", \"rf_res.rds\"))\nnnet_res &lt;- readRDS(here(\"models\", \"nnet_res.rds\"))\nen_res   &lt;- readRDS(here(\"models\", \"elasticnet_res.rds\"))\nsvm_res  &lt;- readRDS(here(\"models\", \"svm_res.rds\"))\nmars_res &lt;- readRDS(here(\"models\", \"mars_res.rds\"))"
+  },
+  {
+    "objectID": "docs/05-stack.html#build-blend-and-fit-the-ensemble",
+    "href": "docs/05-stack.html#build-blend-and-fit-the-ensemble",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "Build, blend, and fit the ensemble",
+    "text": "Build, blend, and fit the ensemble\n\n\nShow code\nset.seed(42)\nhouse_stack &lt;- stacks() |&gt;\n  add_candidates(xgb_res) |&gt;\n  add_candidates(rf_res) |&gt;\n  add_candidates(nnet_res) |&gt;\n  add_candidates(en_res) |&gt;\n  add_candidates(svm_res) |&gt;\n  add_candidates(mars_res) |&gt;\n  blend_predictions() |&gt;     # LASSO over candidates -&gt; keeps the useful ones\n  fit_members()              # refit the retained members on all training data\n\nhouse_stack\n\n\n# A tibble: 10 × 3\n   member                    type         weight\n   &lt;chr&gt;                     &lt;chr&gt;         &lt;dbl&gt;\n 1 svm_respre08_mod15_post0  svm_rbf     0.436  \n 2 xgb_respre03_mod17_post0  boost_tree  0.120  \n 3 xgb_respre01_mod09_post0  boost_tree  0.112  \n 4 xgb_respre14_mod11_post0  boost_tree  0.112  \n 5 rf_respre02_mod04_post0   rand_forest 0.0784 \n 6 xgb_respre05_mod20_post0  boost_tree  0.0660 \n 7 en_respre04_mod01_post0   linear_reg  0.0308 \n 8 mars_respre01_mod12_post0 mars        0.0180 \n 9 mars_respre10_mod18_post0 mars        0.0162 \n10 nnet_respre02_mod13_post0 mlp         0.00792\n\n\n\nWhich members survived the blend?\n\n\nShow code\nautoplot(house_stack, type = \"weights\") +\n  scale_colour_manual(values = grDevices::colorRampPalette(house_pal)(10)) +\n  scale_fill_manual(values = grDevices::colorRampPalette(house_pal)(10))\n\n\n\n\n\nBlended stacking coefficients — the members the meta-learner kept.\n\n\n\n\nThe boosted trees and elastic net usually earn the largest weights, with the SVM and neural net contributing diverse corrections — different biases, combined."
+  },
+  {
+    "objectID": "docs/05-stack.html#save-the-fitted-ensemble",
+    "href": "docs/05-stack.html#save-the-fitted-ensemble",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "Save the fitted ensemble",
+    "text": "Save the fitted ensemble\n\n\nShow code\nsaveRDS(house_stack, here(\"models\", \"stack_fit.rds\"))"
+  },
+  {
+    "objectID": "docs/05-stack.html#build-the-kaggle-submission",
+    "href": "docs/05-stack.html#build-the-kaggle-submission",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "Build the Kaggle submission",
+    "text": "Build the Kaggle submission\n\n\nShow code\ntest &lt;- read_csv(here(\"data\", \"processed\", \"test.csv\"), show_col_types = FALSE)\n\n# Predictions are on the log scale (we trained on log(SalePrice)); exponentiate\n# back to dollars for the leaderboard.\nstack_pred &lt;- predict(house_stack, new_data = test)\n\nsubmission &lt;- tibble(\n  Id        = test$Id,\n  SalePrice = exp(stack_pred$.pred)\n)\nwrite_csv(submission, here(\"models\", \"submission_stack.csv\"))\n\nsummary(submission$SalePrice)\n\n\n   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. \n  49542  127399  156771  177435  209006  491014 \n\n\nUpload it the same way as any other model:\nkaggle competitions submit -c home-data-for-ml-course -f models/submission_stack.csv \\\n  -m \"stacked ensemble (xgb + rf + nnet + glmnet + svm + mars) via stacks\""
+  },
+  {
+    "objectID": "docs/05-stack.html#next-steps",
+    "href": "docs/05-stack.html#next-steps",
+    "title": "Model 7 — Stacked Ensemble",
+    "section": "Next steps",
+    "text": "Next steps\n\nThe parameterized submission doc also accepts -P model:stack.\nCompare the stack’s leaderboard score against the individual models on the master document — does the blend actually win on the held-out Kaggle test set, or only in cross-validation?\nSee the Kaggle setup guide for authentication."
+  },
+  {
+    "objectID": "docs/setup-kaggle.html",
+    "href": "docs/setup-kaggle.html",
+    "title": "",
+    "section": "",
+    "text": "Code"
+  },
+  {
+    "objectID": "docs/setup-kaggle.html#create-a-kaggle-account-and-accept-the-rules",
+    "href": "docs/setup-kaggle.html#create-a-kaggle-account-and-accept-the-rules",
+    "title": "",
+    "section": "1. Create a Kaggle account and accept the rules",
+    "text": "1. Create a Kaggle account and accept the rules\n\nSign up at https://www.kaggle.com (free; Google sign-in works).\nGo to the competition page: https://www.kaggle.com/competitions/home-data-for-ml-course.\nClick Join Competition and accept the rules. You must do this — the API will refuse to download data or accept submissions until you have accepted the competition rules in the browser."
+  },
+  {
+    "objectID": "docs/setup-kaggle.html#generate-your-api-token-kaggle.json",
+    "href": "docs/setup-kaggle.html#generate-your-api-token-kaggle.json",
+    "title": "",
+    "section": "2. Generate your API token (kaggle.json)",
+    "text": "2. Generate your API token (kaggle.json)\n\nClick your avatar (top right) → Settings.\nScroll to the API section → Create New Token.\nYour browser downloads kaggle.json (username + secret key — treat it like a password, never commit it).\nMove it into place and lock down the permissions:\nmkdir -p ~/.kaggle\nmv ~/Downloads/kaggle.json ~/.kaggle/\nchmod 600 ~/.kaggle/kaggle.json\n\nThe chmod 600 step matters — the CLI warns (and on some systems refuses to run) if the file is world-readable."
+  },
+  {
+    "objectID": "docs/setup-kaggle.html#verify-the-cli",
+    "href": "docs/setup-kaggle.html#verify-the-cli",
+    "title": "",
+    "section": "3. Verify the CLI",
+    "text": "3. Verify the CLI\nexport PATH=\"$HOME/.local/bin:$PATH\"   # add to ~/.bashrc to make it permanent\nkaggle --version"
+  },
+  {
+    "objectID": "docs/setup-kaggle.html#download-the-data-the-real-way",
+    "href": "docs/setup-kaggle.html#download-the-data-the-real-way",
+    "title": "",
+    "section": "4. Download the data the “real” way",
+    "text": "4. Download the data the “real” way\nOnce authenticated, pull the official competition files:\nkaggle competitions download -c home-data-for-ml-course -p data/raw\nunzip data/raw/home-data-for-ml-course.zip -d data/raw\nThis gives you data/raw/train.csv (1460 rows, includes SalePrice), data/raw/test.csv (1459 rows, no SalePrice), sample_submission.csv, and data_description.txt. These overwrite the mirror copies — that is fine, they are the same data."
+  },
+  {
+    "objectID": "docs/setup-kaggle.html#submit-predictions-to-the-leaderboard",
+    "href": "docs/setup-kaggle.html#submit-predictions-to-the-leaderboard",
+    "title": "",
+    "section": "5. Submit predictions to the leaderboard",
+    "text": "5. Submit predictions to the leaderboard\nThe Quarto submission document generates one CSV per model into models/, named submission_&lt;model&gt;.csv where &lt;model&gt; is one of xgboost, rf, nnet, elasticnet, svm, mars, or stack. Each file has exactly two columns — Id,SalePrice — one row per test house, with SalePrice in dollars.\nGeneral form:\nkaggle competitions submit -c home-data-for-ml-course -f models/submission_&lt;model&gt;.csv -m \"&lt;message&gt;\"\nConcrete examples:\nkaggle competitions submit -c home-data-for-ml-course -f models/submission_xgboost.csv -m \"xgboost baseline\"\nkaggle competitions submit -c home-data-for-ml-course -f models/submission_stack.csv  -m \"stacked ensemble\"\nThe -m message shows up next to your score so you can tell submissions apart."
+  },
+  {
+    "objectID": "docs/setup-kaggle.html#check-your-score-and-submission-history",
+    "href": "docs/setup-kaggle.html#check-your-score-and-submission-history",
+    "title": "",
+    "section": "6. Check your score and submission history",
+    "text": "6. Check your score and submission history\nkaggle competitions submissions -c home-data-for-ml-course\nkaggle competitions leaderboard  -c home-data-for-ml-course --show\nThe score is RMSE on log(SalePrice) — lower is better. A stacked tidymodels ensemble on these features typically lands around 0.12–0.13."
+  },
+  {
+    "objectID": "docs/setup-kaggle.html#troubleshooting",
+    "href": "docs/setup-kaggle.html#troubleshooting",
+    "title": "",
+    "section": "Troubleshooting",
+    "text": "Troubleshooting\n\n\n\n\n\n\n\nSymptom\nFix\n\n\n\n\n403 Forbidden on download/submit\nYou have not accepted the competition rules — do step 1.3 in the browser.\n\n\nkaggle: command not found\nAdd ~/.local/bin to your PATH (step 3).\n\n\nCould not find kaggle.json\nIt must live at ~/.kaggle/kaggle.json (step 2).\n\n\nWarning about insecure permissions\nchmod 600 ~/.kaggle/kaggle.json."
+  }
+]
